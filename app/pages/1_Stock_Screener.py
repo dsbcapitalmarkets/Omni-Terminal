@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
-from core.db import load, last_updated
+from core.db import load_cached, last_updated
 
 st.set_page_config(page_title="Stock Screener", page_icon="📊", layout="wide")
 st.title("📊 Stock Screener")
 
-data = load("screener.json")
+data = load_cached("screener.json")
 
 if not data or data.get("status") == "error":
     st.error(f"Last run failed: {data.get('error', 'No data yet.')}" if data else "No data yet. Trigger the workflow to run.")

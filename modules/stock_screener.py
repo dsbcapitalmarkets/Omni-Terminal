@@ -8,7 +8,7 @@ from ta.momentum import RSIIndicator
 
 from core.db import save
 from core.notifier import send_message
-from core.utils import timestamp_str
+from core.utils import timestamp_str, safe_scalar, nse_get
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +17,8 @@ logger = logging.getLogger(__name__)
 # =========================
 def get_nifty_symbols() -> list[str]:
     print("Fetching universe from NSE...")
-    url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20TOTAL%20MARKET"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    session = requests.Session()
-    session.get("https://www.nseindia.com", headers=headers)
-    response = session.get(url, headers=headers)
-    data = response.json()
+    url  = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20TOTAL%20MARKET"
+    data = nse_get(url)
     symbols = []
     for item in data["data"]:
         if item.get("priority") == 1:

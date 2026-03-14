@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
-from core.db import load
+from core.db import load_cached
 from core.utils import fmt_pct
 
 st.set_page_config(page_title="Gold/Silver Ratio", page_icon="🥇", layout="wide")
 st.title("🥇 Gold / Silver Ratio Tracker")
 
-data = load("gold_silver.json")
+data = load_cached("gold_silver.json")
 
 if not data or data.get("status") == "error":
     st.error(data.get("error", "No data yet.") if data else "No data yet. Trigger the workflow to run.")

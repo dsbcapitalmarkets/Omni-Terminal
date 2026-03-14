@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from core.db import load, last_updated
+from core.db import load_cached, last_updated
 from config import MODULE_SCHEDULES, DATA_FILES
 
 st.set_page_config(
@@ -51,7 +51,7 @@ snap_cols = st.columns(3)
 
 # Breadth
 with snap_cols[0]:
-    breadth = load("breadth.json")
+    breadth = load_cached("breadth.json")
     st.markdown("**📊 Market Breadth**")
     if breadth and breadth.get("status") == "ok":
         st.metric("Regime", breadth.get("regime", "—"))
@@ -63,7 +63,7 @@ with snap_cols[0]:
 
 # Sector rotation
 with snap_cols[1]:
-    sector = load("sector_rotation.json")
+    sector = load_cached("sector_rotation.json")
     st.markdown("**🔄 Sector Rotation**")
     if sector and sector.get("status") == "ok":
         leaders  = sector.get("leaders",  [])
@@ -76,7 +76,7 @@ with snap_cols[1]:
 
 # Smart money
 with snap_cols[2]:
-    sm = load("smart_money.json")
+    sm = load_cached("smart_money.json")
     st.markdown("**💰 Smart Money**")
     if sm and sm.get("status") == "ok":
         latest = sm.get("latest", {})
@@ -93,7 +93,7 @@ st.divider()
 row2 = st.columns(2)
 
 with row2[0]:
-    port = load("portfolio_review.json")
+    port = load_cached("portfolio_review.json")
     st.markdown("**💼 Portfolio Review**")
     if port and port.get("status") == "ok":
         c1, c2, c3 = st.columns(3)
@@ -113,7 +113,7 @@ with row2[0]:
         st.info("No data yet.")
 
 with row2[1]:
-    screener = load("screener.json")
+    screener = load_cached("screener.json")
     st.markdown("**📊 Stock Screener**")
     if screener and screener.get("status") == "ok":
         c1, c2 = st.columns(2)
@@ -137,7 +137,7 @@ st.divider()
 row3 = st.columns(2)
 
 with row3[0]:
-    gs = load("gold_silver.json")
+    gs = load_cached("gold_silver.json")
     st.markdown("**🥇 Gold / Silver Ratio**")
     if gs and gs.get("status") == "ok":
         c1, c2 = st.columns(2)
@@ -149,7 +149,7 @@ with row3[0]:
         st.info("No data yet.")
 
 with row3[1]:
-    earn = load("earnings.json")
+    earn = load_cached("earnings.json")
     st.markdown("**📅 Earnings Tracker**")
     if earn and earn.get("status") == "ok":
         c1, c2 = st.columns(2)

@@ -8,7 +8,7 @@ import yfinance as yf
 from core.db import save
 from core.gsheets import get_gspread_client, open_or_create_sheet
 from core.notifier import send_message
-from core.utils import timestamp_str
+from core.utils import timestamp_str, nse_get
 
 logger = logging.getLogger(__name__)
 
@@ -24,18 +24,15 @@ SHEET_HEADERS     = [
 # Fetch NSE data (your original logic)
 # =========================
 def get_nse_data() -> tuple[dict, list[str]]:
-    url     = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20TOTAL%20MARKET"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    session = requests.Session()
-    session.get("https://www.nseindia.com", headers=headers)
-    response = session.get(url, headers=headers)
-    data     = response.json()["data"]
+    url      = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20TOTAL%20MARKET"
+    response = nse_get(url)          # returns full JSON dict with retry/backoff
+    nse_data = response["data"]      # renamed to nse_data to avoid collision
 
     symbols   = []
     advances  = declines = unchanged = 0
     new_highs = new_lows = 0
 
-    for item in data:
+    for item in nse_data:
         if item.get("priority") == 1:
             continue
         symbol = item.get("symbol")
@@ -43,16 +40,16 @@ def get_nse_data() -> tuple[dict, list[str]]:
             symbols.append(symbol + ".NS")
         try:
             p_change = float(item.get("pChange", 0))
-            if p_change > 0:      advances  += 1
-            elif p_change < 0:    declines  += 1
-            else:                 unchanged += 1
+            if p_change > 0:    advances  += 1
+            elif p_change < 0:  declines  += 1
+            else:               unchanged += 1
         except Exception:
             continue
         try:
             last_price = float(item.get("lastPrice", 0))
             year_high  = float(item.get("yearHigh",  0))
             year_low   = float(item.get("yearLow",   0))
-            tol        = 1  # 1% tolerance
+            tol        = 1
             if year_high > 0 and last_price >= year_high * (1 - tol / 100):
                 new_highs += 1
             if year_low > 0 and last_price <= year_low * (1 + tol / 100):
@@ -64,12 +61,12 @@ def get_nse_data() -> tuple[dict, list[str]]:
     nh_nl_spread = new_highs - new_lows
 
     breadth = {
-        "advances":    advances,
-        "declines":    declines,
-        "unchanged":   unchanged,
-        "new_highs":   new_highs,
-        "new_lows":    new_lows,
-        "ad_ratio":    ad_ratio,
+        "advances":     advances,
+        "declines":     declines,
+        "unchanged":    unchanged,
+        "new_highs":    new_highs,
+        "new_lows":     new_lows,
+        "ad_ratio":     ad_ratio,
         "nh_nl_spread": nh_nl_spread,
     }
     return breadth, symbols

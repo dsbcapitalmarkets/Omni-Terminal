@@ -5,7 +5,7 @@ import requests
 
 from core.db import save
 from core.notifier import send_message
-from core.utils import timestamp_str
+from core.utils import timestamp_str, nse_get
 
 logger = logging.getLogger(__name__)
 
@@ -16,33 +16,11 @@ NSE_CALENDAR_URL = "https://www.nseindia.com/api/event-calendar"
 # Fetch from NSE event calendar
 # =========================
 def fetch_earnings(days_ahead: int = 7) -> tuple[list[dict], list[dict]]:
-    """
-    Fetch board meeting / results announcements from NSE event calendar.
-    Returns (today_results, upcoming_results) — both filtered for 'Results' purpose.
-    """
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept":     "application/json",
-        "Referer":    "https://www.nseindia.com",
-    }
-    session = requests.Session()
-    # NSE requires a cookie from homepage first
-    session.get("https://www.nseindia.com", headers=headers, timeout=10)
-
-    today     = datetime.now().date()
-    date_to   = today + timedelta(days=days_ahead)
-
-    params = {
-        "index": "equities",
-    }
-
+    url  = "https://www.nseindia.com/api/event-calendar"
     try:
-        r    = session.get(NSE_CALENDAR_URL, headers=headers,
-                           params=params, timeout=15)
-        r.raise_for_status()
-        data = r.json()
+        data = nse_get(url, retries=3, backoff=5.0)
     except Exception as e:
-        logger.warning(f"NSE calendar fetch failed: {e} — falling back to empty list")
+        logger.warning(f"NSE calendar fetch failed: {e}")
         return [], []
 
     today_results    = []
