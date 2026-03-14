@@ -18,9 +18,9 @@ def get_gspread_client() -> gspread.Client:
     stored in GOOGLE_SHEETS_CRED environment variable.
     Shared by all modules that need Sheets access.
     """
-    creds_json = os.getenv("GOOGLE_SHEETS_CRED")
+    creds_json = os.getenv("GOOGLE_DRIVE_CRED")
     if not creds_json:
-        raise RuntimeError("Missing GOOGLE_SHEETS_CRED GitHub Secret.")
+        raise RuntimeError("Missing GOOGLE_SHEETS/DRIVE_CRED GitHub Secret.")
     creds_dict = json.loads(creds_json)
     creds      = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
     client     = gspread.authorize(creds)
