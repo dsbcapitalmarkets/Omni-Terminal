@@ -16,22 +16,23 @@ NSE_CALENDAR_URL = "https://www.nseindia.com/api/event-calendar"
 # Fetch from NSE event calendar
 # =========================
 def fetch_earnings(days_ahead: int = 7) -> tuple[list[dict], list[dict]]:
-    url  = "https://www.nseindia.com/api/event-calendar"
+    url = "https://www.nseindia.com/api/event-calendar"
     try:
-        data = nse_get(url, retries=3, backoff=5.0)
+        nse_data = nse_get(url, retries=3, backoff=5.0)
     except Exception as e:
         logger.warning(f"NSE calendar fetch failed: {e}")
         return [], []
 
+    today   = datetime.now().date()
+    date_to = today + timedelta(days=days_ahead)
+
     today_results    = []
     upcoming_results = []
 
-    for event in data:
-        # Filter for result/board meeting announcements only
+    for event in nse_data:
         purpose = event.get("purpose", "").lower()
         if not any(k in purpose for k in ["result", "financial", "quarterly", "annual"]):
             continue
-
         try:
             event_date = datetime.strptime(
                 event.get("date", ""), "%d-%b-%Y"
@@ -48,11 +49,10 @@ def fetch_earnings(days_ahead: int = 7) -> tuple[list[dict], list[dict]]:
         }
 
         if event_date == today:
-            today_results.append(entry)
+            upcoming_results.append(entry)
         elif today < event_date <= date_to:
             upcoming_results.append(entry)
 
-    # Sort both by date
     today_results.sort(key=lambda x: x["date"])
     upcoming_results.sort(key=lambda x: x["date"])
 

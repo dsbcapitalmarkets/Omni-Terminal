@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from core.db import load_cached, last_updated
+from core.db import load, load_cached, last_updated
 from config import MODULE_SCHEDULES, DATA_FILES
 
 st.set_page_config(
