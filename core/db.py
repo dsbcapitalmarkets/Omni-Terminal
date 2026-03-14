@@ -22,7 +22,9 @@ def _get_drive_service():
     if not creds_json:
         raise RuntimeError("Missing GOOGLE_DRIVE_CRED environment variable.")
     creds_dict = json.loads(creds_json)
-    creds      = Credentials.from_service_account_info(creds_dict, scopes=DRIVE_SCOPES)
+    creds      = Credentials.from_service_account_info(
+        creds_dict, scopes=DRIVE_SCOPES
+    )
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 def _get_folder_id() -> str:
@@ -32,10 +34,10 @@ def _get_folder_id() -> str:
     return folder_id
 
 def _find_file_id(service, filename: str, folder_id: str) -> str | None:
+    """Return the Drive file ID for filename inside folder, or None if not found."""
     query = (
         f"name='{filename}' "
         f"and '{folder_id}' in parents "
-        f"and mimeType='application/json' "
         f"and trashed=false"
     )
     result = service.files().list(
@@ -45,32 +47,53 @@ def _find_file_id(service, filename: str, folder_id: str) -> str | None:
     return files[0]["id"] if files else None
 
 # =========================
-# Core read / write
+# Public API
 # =========================
 def save(filename: str, payload: dict | list) -> None:
-    """Write payload as JSON to Google Drive. Falls back to local data/ folder."""
+    """
+    Update an existing JSON file in Google Drive.
+    File MUST already exist in the Drive folder — create it manually first.
+    Falls back to local data/ folder if Drive unavailable.
+    """
     content = json.dumps(payload, indent=2, default=str).encode("utf-8")
+
     try:
         service   = _get_drive_service()
         folder_id = _get_folder_id()
         file_id   = _find_file_id(service, filename, folder_id)
-        media     = MediaIoBaseUpload(
-            io.BytesIO(content), mimetype="application/json", resumable=False
-        )
-        if file_id:
-            service.files().update(fileId=file_id, media_body=media).execute()
-            logger.info(f"Drive updated: {filename}")
-        else:
-            service.files().create(
-                body={"name": filename, "parents": [folder_id],
-                      "mimeType": "application/json"},
-                media_body=media, fields="id",
-            ).execute()
-            logger.info(f"Drive created: {filename}")
-        return
-    except Exception as e:
-        logger.warning(f"Drive save failed for {filename}, falling back to local: {e}")
 
+        if not file_id:
+            # File doesn't exist — can't create (service account has no quota)
+            # Log clearly so user knows to manually create the file in Drive
+            raise FileNotFoundError(
+                f"'{filename}' not found in Drive folder. "
+                f"Please create it manually in quant-dashboard-data/ "
+                f"with content {{\"status\": \"pending\"}} then re-run."
+            )
+
+        media = MediaIoBaseUpload(
+            io.BytesIO(content),
+            mimetype="application/json",
+            resumable=False,
+        )
+        service.files().update(
+            fileId=file_id,
+            media_body=media,
+        ).execute()
+        logger.info(f"Drive updated: {filename}")
+        return
+
+    except FileNotFoundError as e:
+        # Re-raise with clear message — this needs user action
+        logger.error(str(e))
+        raise
+
+    except Exception as e:
+        logger.warning(
+            f"Drive save failed for {filename}, falling back to local: {e}"
+        )
+
+    # Local fallback (used during local dev without Drive credentials)
     DATA_DIR.mkdir(exist_ok=True)
     with open(DATA_DIR / filename, "w") as f:
         f.write(json.dumps(payload, indent=2, default=str))
@@ -86,9 +109,11 @@ def load(filename: str, default=None):
         service   = _get_drive_service()
         folder_id = _get_folder_id()
         file_id   = _find_file_id(service, filename, folder_id)
+
         if not file_id:
             logger.warning(f"Drive: {filename} not found.")
             return default
+
         request    = service.files().get_media(fileId=file_id)
         buffer     = io.BytesIO()
         downloader = MediaIoBaseDownload(buffer, request)
@@ -97,6 +122,7 @@ def load(filename: str, default=None):
             _, done = downloader.next_chunk()
         buffer.seek(0)
         return json.load(buffer)
+
     except Exception as e:
         logger.warning(f"Drive load failed for {filename}, trying local: {e}")
 
@@ -114,36 +140,38 @@ def load_cached(filename: str, default=None):
     """
     Cached version of load() for Streamlit pages.
     Re-fetches from Drive at most once every 15 minutes.
-    Import and use this in all app/pages/*.py files.
     """
-    # Import here so streamlit is only required in dashboard context
     try:
         import streamlit as st
 
-        @st.cache_data(ttl=900, show_spinner=False)   # 900s = 15 min
+        @st.cache_data(ttl=900, show_spinner=False)
         def _cached(fname: str):
             return load(fname, default)
 
         return _cached(filename)
     except ImportError:
-        # Streamlit not available (e.g. running in Actions) — fall back to uncached
         return load(filename, default)
 
 
 def last_updated(filename: str) -> str | None:
-    """Return last modified time of the file from Drive. Falls back to local mtime."""
+    """Return last modified time of the file from Drive."""
     try:
         service   = _get_drive_service()
         folder_id = _get_folder_id()
         file_id   = _find_file_id(service, filename, folder_id)
+
         if not file_id:
             return None
+
         meta = service.files().get(
             fileId=file_id, fields="modifiedTime"
         ).execute()
-        dt = datetime.fromisoformat(meta["modifiedTime"].replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(
+            meta["modifiedTime"].replace("Z", "+00:00")
+        )
         from core.utils import IST
         return dt.astimezone(IST).strftime("%d %b %Y, %I:%M %p IST")
+
     except Exception as e:
         logger.warning(f"Drive last_updated failed for {filename}: {e}")
 

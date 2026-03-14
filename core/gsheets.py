@@ -32,14 +32,14 @@ def open_or_create_sheet(
     sheet_name: str,
     worksheet_name: str = "Sheet1",
     headers: list[str] | None = None,
+    spreadsheet_id: str | None = None,   # ← add this param
 ) -> gspread.Worksheet:
-    """
-    Open an existing sheet or create it with optional headers.
-    Shared utility so each module doesn't reimplement this logic.
-    """
     try:
-        worksheet = client.open(sheet_name).worksheet(worksheet_name)
-        logger.info(f"Opened existing sheet: {sheet_name}")
+        # Use ID if provided — safer than name
+        
+        spreadsheet = client.open_by_key(spreadsheet_id)
+        worksheet = spreadsheet.worksheet(worksheet_name)
+        logger.info(f"Opened sheet: {sheet_name}")
         return worksheet
     except gspread.SpreadsheetNotFound:
         logger.info(f"Sheet not found, creating: {sheet_name}")

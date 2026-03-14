@@ -1,4 +1,5 @@
 import logging
+import os
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -13,7 +14,8 @@ from core.utils import timestamp_str
 
 logger = logging.getLogger(__name__)
 
-GOOGLE_SHEET_NAME = "Smart_Money_Flow_Tracker"
+GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEETS_ID")
+GOOGLE_SHEET_NAME = "Smart_Money_Tracker"
 WORKSHEET_NAME    = "Sheet1"
 SHEET_HEADERS     = ["Date", "FII_Buy", "FII_Sell", "FII_Net",
                       "DII_Buy", "DII_Sell", "DII_Net"]
@@ -157,7 +159,7 @@ def run() -> dict:
         # 1. Connect to Google Sheet
         client    = get_gspread_client()
         sheet     = open_or_create_sheet(
-            client, GOOGLE_SHEET_NAME, WORKSHEET_NAME, SHEET_HEADERS
+            client, GOOGLE_SHEET_NAME, WORKSHEET_NAME, SHEET_HEADERS, GOOGLE_SHEET_ID
         )
 
         # 2. Fetch FII/DII data from NSE

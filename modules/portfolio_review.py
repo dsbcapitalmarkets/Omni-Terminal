@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+import os
 
 import numpy as np
 import pandas as pd
@@ -13,7 +14,8 @@ from core.utils import timestamp_str, normalize_ohlc
 logger = logging.getLogger(__name__)
 
 NIFTY             = "^NSEI"
-GOOGLE_SHEET_NAME = "My_Holdings-Portfolio_Reviewer"
+GOOGLE_SHEET_ID   = os.getenv("GOOGLE_SHEETS_ID")
+GOOGLE_SHEET_NAME = "Auto_Portfolio_Reviewer"
 WORKSHEET_NAME    = "Sheet1"
 
 # =========================
@@ -184,7 +186,7 @@ def run() -> dict:
     try:
         # 1. Connect to Google Sheet (source of truth for holdings)
         client    = get_gspread_client()
-        sheet     = client.open(GOOGLE_SHEET_NAME).worksheet(WORKSHEET_NAME)
+        sheet = client.open_by_key(GOOGLE_SHEET_ID).worksheet(WORKSHEET_NAME)
         data      = pd.DataFrame(sheet.get_all_records())
 
         if data.empty:

@@ -32,4 +32,5 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN_MBT }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
           GOOGLE_SHEETS_CRED: ${{ secrets.GOOGLE_DRIVE_CRED }}
+          GOOGLE_SHEETS_ID:   ${{ secrets.GOOGLE_SHEET_ID_MBT }}
         run: python -m modules.market_breadth

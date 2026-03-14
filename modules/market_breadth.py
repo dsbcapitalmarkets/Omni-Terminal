@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+import os
 
 import pandas as pd
 import requests
@@ -12,6 +13,7 @@ from core.utils import timestamp_str, nse_get
 
 logger = logging.getLogger(__name__)
 
+GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEETS_ID")
 GOOGLE_SHEET_NAME = "Market_Breadth_Tracker"
 WORKSHEET_NAME    = "Sheet1"
 SHEET_HEADERS     = [
@@ -167,7 +169,7 @@ def run() -> dict:
         try:
             client    = get_gspread_client()
             worksheet = open_or_create_sheet(
-                client, GOOGLE_SHEET_NAME, WORKSHEET_NAME, SHEET_HEADERS
+                client, GOOGLE_SHEET_NAME, WORKSHEET_NAME, SHEET_HEADERS, GOOGLE_SHEET_ID
             )
             write_to_gsheet(worksheet, breadth, regime)
         except Exception as e:
