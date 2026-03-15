@@ -10,3 +10,4 @@ venv/
 .pytest_cache/
 fii_dii_trend.png
 secrets.toml
+data/
