@@ -9,5 +9,5 @@ venv/
 *.egg-info/
 .pytest_cache/
 fii_dii_trend.png
-secrets.toml
+.streamlit/secrets.toml
 data/
