@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
-from core.db import load_cached
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from app.load_data import get
 
 st.set_page_config(page_title="Smart Money Flow", page_icon="💰", layout="wide")
 st.title("💰 Smart Money Flow Tracker")
 
-data = load_cached("smart_money.json")
+data = get("Smart Money Flow")
 
 if not data or data.get("status") == "error":
     st.error(data.get("error", "No data yet.") if data else "No data yet. Trigger the workflow to run.")
@@ -53,7 +55,7 @@ if history:
         df = df.dropna(subset=["date"]).sort_values("date").set_index("date")
         df["fii_net"] = pd.to_numeric(df["fii_net"].astype(str).str.replace(",",""), errors="coerce")
         df["dii_net"] = pd.to_numeric(df["dii_net"].astype(str).str.replace(",",""), errors="coerce")
-        st.line_chart(df[["fii_net", "dii_net"]], use_container_width=True)
+        st.line_chart(df[["fii_net", "dii_net"]], width="stretch")
     except Exception as e:
         st.warning(f"Could not render chart: {e}")
 
@@ -62,4 +64,4 @@ if history:
     # ── History table ─────────────────────────────────────
     st.subheader("Daily history")
     display_df = pd.DataFrame(history).tail(30).iloc[::-1].reset_index(drop=True)
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    st.dataframe(display_df, width="stretch", hide_index=True)

@@ -1,21 +1,23 @@
 import streamlit as st
 import pandas as pd
-from core.db import load_cached, last_updated
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from app.load_data import get
 
 st.set_page_config(page_title="Stock Screener", page_icon="📊", layout="wide")
 st.title("📊 Stock Screener")
 
-data = load_cached("screener.json")
+data = get("Stock Screener")
 
 if not data or data.get("status") == "error":
     st.error(f"Last run failed: {data.get('error', 'No data yet.')}" if data else "No data yet. Trigger the workflow to run.")
     st.stop()
 
 # ── Header metrics ────────────────────────────────────────
-c1, c2, c3 = st.columns(3)
+st.caption(f"Last updated: {data.get('timestamp', '—')}")
+c1, c2 = st.columns(2)
 c1.metric("Universe",      data.get("total_universe", "—"))
 c2.metric("Passed filter", data.get("passed_count",   "—"))
-c3.metric("Last updated",  data.get("timestamp",      "—"))
 
 st.divider()
 
@@ -35,7 +37,7 @@ df["screener.in"] = df["symbol"].apply(
 
 st.dataframe(
     df[["symbol", "score", "screener.in"]],
-    use_container_width=True,
+    width="stretch",
     column_config={
         "symbol":      st.column_config.TextColumn("Symbol"),
         "score":       st.column_config.NumberColumn("Score", format="%.3f"),

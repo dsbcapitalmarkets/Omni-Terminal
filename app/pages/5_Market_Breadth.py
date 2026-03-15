@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
-from core.db import load_cached
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from app.load_data import get
 
 st.set_page_config(page_title="Market Breadth", page_icon="📊", layout="wide")
 st.title("📊 Market Breadth Tracker")
 
-data = load_cached("breadth.json")
-
+data = get("Market Breadth")
 if not data or data.get("status") == "error":
     st.error(data.get("error", "No data yet.") if data else "No data yet. Trigger the workflow to run.")
     st.stop()

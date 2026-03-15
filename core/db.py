@@ -18,20 +18,44 @@ DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
 # Drive client
 # =========================
 def _get_drive_service():
-    creds_json = os.getenv("GOOGLE_DRIVE_CRED")
-    if not creds_json:
-        raise RuntimeError("Missing GOOGLE_DRIVE_CRED environment variable.")
-    creds_dict = json.loads(creds_json)
-    creds      = Credentials.from_service_account_info(
-        creds_dict, scopes=DRIVE_SCOPES
-    )
+    """
+    Handles two formats:
+    - GitHub Actions: GOOGLE_DRIVE_CRED is a JSON string
+    - Streamlit Cloud: GOOGLE_DRIVE_CRED is a TOML table (dict-like object)
+    """
+    creds_raw = os.getenv("GOOGLE_DRIVE_CRED")
+
+    if creds_raw:
+        # GitHub Actions — env var is a JSON string
+        creds_dict = json.loads(creds_raw)
+    else:
+        # Streamlit Cloud — read from st.secrets
+        try:
+            import streamlit as st
+            creds_dict = dict(st.secrets["GOOGLE_DRIVE_CRED"])
+        except Exception:
+            raise RuntimeError(
+                "GOOGLE_DRIVE_CRED not found in environment or Streamlit secrets."
+            )
+
+    creds = Credentials.from_service_account_info(creds_dict, scopes=DRIVE_SCOPES)
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
+
 def _get_folder_id() -> str:
+    """
+    Handles both GitHub Actions (env var) and Streamlit Cloud (st.secrets).
+    """
     folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
-    if not folder_id:
-        raise RuntimeError("Missing GOOGLE_DRIVE_FOLDER_ID environment variable.")
-    return folder_id
+    if folder_id:
+        return folder_id
+    try:
+        import streamlit as st
+        return st.secrets["GOOGLE_DRIVE_FOLDER_ID"]
+    except Exception:
+        raise RuntimeError(
+            "GOOGLE_DRIVE_FOLDER_ID not found in environment or Streamlit secrets."
+        )
 
 def _find_file_id(service, filename: str, folder_id: str) -> str | None:
     """Return the Drive file ID for filename inside folder, or None if not found."""

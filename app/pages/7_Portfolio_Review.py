@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
-from core.db import load_cached
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from app.load_data import get
 
 st.set_page_config(page_title="Portfolio Review", page_icon="💼", layout="wide")
 st.title("💼 Auto Portfolio Reviewer")
 
-data = load_cached("portfolio_review.json")
+data = get("Portfolio Review")
 
 if not data or data.get("status") == "error":
     st.error(data.get("error", "No data yet.") if data else "No data yet. Trigger the workflow to run.")
@@ -49,7 +51,7 @@ st.dataframe(
         "trend_state", "risk_status", "supertrend",
         "ema_20", "ema_50", "trailing_sl", "rs",
     ]].reset_index(drop=True),
-    use_container_width=True,
+    width="stretch",
     hide_index=True,
     column_config={
         "ticker":        st.column_config.TextColumn("Ticker"),
@@ -74,7 +76,7 @@ full_df = pd.DataFrame(data.get("holdings", []))
 if not full_df.empty:
     st.bar_chart(
         full_df.set_index("ticker")["pnl_pct"],
-        use_container_width=True,
+        width="stretch",
     )
 
 # ── EXIT / SELL watchlist ─────────────────────────────────

@@ -1,13 +1,14 @@
 import streamlit as st
 import pandas as pd
-from core.db import load_cached
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from app.load_data import get
 from core.utils import fmt_pct
 
 st.set_page_config(page_title="Gold/Silver Ratio", page_icon="🥇", layout="wide")
 st.title("🥇 Gold / Silver Ratio Tracker")
 
-data = load_cached("gold_silver.json")
-
+data = get("Gold Silver Ratio")
 if not data or data.get("status") == "error":
     st.error(data.get("error", "No data yet.") if data else "No data yet. Trigger the workflow to run.")
     st.stop()
@@ -47,7 +48,7 @@ with col1:
             f"{data['gsr_max']:.4f}",
             f"{data['gsr_dev_pct']:+.2f}%",
         ]
-    }), hide_index=True, use_container_width=True)
+    }), hide_index=True, width="stretch")
 
 with col2:
     st.subheader("Trends & volatility")
@@ -55,7 +56,7 @@ with col2:
         "":           ["Gold", "Silver"],
         "Trend":      [data["gold_trend"],  data["silver_trend"]],
         "Ann. Vol":   [fmt_pct(data["gold_vol"]), fmt_pct(data["silver_vol"])],
-    }), hide_index=True, use_container_width=True)
+    }), hide_index=True, width="stretch")
 
 st.divider()
 
@@ -69,7 +70,7 @@ returns_df = pd.DataFrame({
     "Gold":    [fmt_pct(gr.get(p), plus=True) for p in periods],
     "Silver":  [fmt_pct(sr.get(p), plus=True) for p in periods],
 })
-st.dataframe(returns_df, hide_index=True, use_container_width=True)
+st.dataframe(returns_df, hide_index=True, width="stretch")
 
 st.divider()
 

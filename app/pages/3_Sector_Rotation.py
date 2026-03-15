@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
-from core.db import load_cached
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from app.load_data import get
 
 st.set_page_config(page_title="Sector Rotation", page_icon="🔄", layout="wide")
 st.title("🔄 Sector Rotation Tracker")
 
-data = load_cached("sector_rotation.json")
+data = get("Sector Rotation")
 
 if not data or data.get("status") == "error":
     st.error(data.get("error", "No data yet.") if data else "No data yet. Trigger the workflow to run.")
@@ -38,7 +40,7 @@ df["rank_change"] = df["rank_change"].apply(rank_arrow)
 
 st.dataframe(
     df[["rank", "sector", "rs", "mom", "signal", "score", "rank_change"]],
-    use_container_width=True,
+    width="stretch",
     hide_index=True,
     column_config={
         "rank":        st.column_config.NumberColumn("Rank"),
@@ -57,4 +59,4 @@ st.divider()
 st.subheader("RS vs momentum — quadrant view")
 scatter_df = pd.DataFrame(sectors).set_index("sector")
 st.scatter_chart(scatter_df[["rs", "mom"]], x="rs", y="mom",
-                 use_container_width=True)
+                 width="stretch")

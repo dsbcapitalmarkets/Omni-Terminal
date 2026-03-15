@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
-from core.db import load_cached
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from app.load_data import get
 
 st.set_page_config(page_title="Earnings Tracker", page_icon="📅", layout="wide")
 st.title("📅 Results & Earnings Tracker")
 
-data = load_cached("earnings.json")
+data = get("Earnings Tracker")
 
 if not data or data.get("status") == "error":
     st.error(data.get("error", "No data yet.") if data else "No data yet. Trigger the workflow to run.")
@@ -27,7 +29,7 @@ if today:
     df_today = pd.DataFrame(today)
     st.dataframe(
         df_today[["symbol", "company", "purpose"]],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "symbol":  st.column_config.TextColumn("Symbol"),
@@ -52,7 +54,7 @@ if upcoming:
         with st.expander(f"📆 {date_val} — {len(subset)} companies", expanded=True):
             st.dataframe(
                 subset[["symbol", "company", "purpose"]].reset_index(drop=True),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 column_config={
                     "symbol":  st.column_config.TextColumn("Symbol"),
