@@ -13,38 +13,20 @@ SCOPE = [
 ]
 
 def get_gspread_client() -> gspread.Client:
-    """
-    Authenticate with Google Sheets using service account credentials
-    stored in GOOGLE_SHEETS_CRED environment variable.
-    Shared by all modules that need Sheets access.
-    """
+    """Authenticate with Google Sheets using service account credentials."""
     creds_json = os.getenv("GOOGLE_DRIVE_CRED")
     if not creds_json:
-        raise RuntimeError("Missing GOOGLE_SHEETS/DRIVE_CRED GitHub Secret.")
-    creds_dict = json.loads(creds_json)
-    creds      = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
-    client     = gspread.authorize(creds)
-    logger.info("Google Sheets client initialised.")
-    return client
+        raise RuntimeError("Missing GOOGLE_DRIVE_CRED environment variable.")
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(
+        json.loads(creds_json), SCOPE
+    )
+    return gspread.authorize(creds)
 
-def open_or_create_sheet(
+
+def get_worksheet(
     client: gspread.Client,
-    sheet_name: str,
+    spreadsheet_id: str,
     worksheet_name: str = "Sheet1",
-    headers: list[str] | None = None,
-    spreadsheet_id: str | None = None,   # ← add this param
 ) -> gspread.Worksheet:
-    try:
-        # Use ID if provided — safer than name
-        
-        spreadsheet = client.open_by_key(spreadsheet_id)
-        worksheet = spreadsheet.worksheet(worksheet_name)
-        logger.info(f"Opened sheet: {sheet_name}")
-        return worksheet
-    except gspread.SpreadsheetNotFound:
-        logger.info(f"Sheet not found, creating: {sheet_name}")
-        worksheet = client.create(sheet_name).get_worksheet(0)
-        worksheet.update_title(worksheet_name)
-        if headers:
-            worksheet.append_row(headers)
-        return worksheet
+    """Open a worksheet by spreadsheet ID."""
+    return client.open_by_key(spreadsheet_id).worksheet(worksheet_name)

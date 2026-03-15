@@ -1,26 +1,27 @@
 import math
 import logging
-
+import math
 import pandas as pd
-import yfinance as yf
-
+from core.fetcher import fetch_ohlc
+from core.utils import normalize_ohlc
+from config import GOLD_SILVER
 from core.db import save
 from core.notifier import send_message
 from core.utils import safe_scalar, fmt_pct, timestamp_str
 
 logger = logging.getLogger(__name__)
 
-GOLD_TICKER   = "GOLDBEES.NS"
-SILVER_TICKER = "SILVERBEES.NS"
-PERIOD        = "6mo"
+GOLD_TICKER   = GOLD_SILVER["gold_ticker"]
+SILVER_TICKER = GOLD_SILVER["silver_ticker"]
+PERIOD        = GOLD_SILVER["period"]
 
-# =========================
-# Helpers (your original logic)
-# =========================
-def clean_data(df: pd.DataFrame) -> pd.DataFrame:
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    return df.dropna()
+def _safe(v) -> float | None:
+    """Return None instead of NaN/inf so the output is valid JSON."""
+    try:
+        f = float(v)
+        return None if (math.isnan(f) or math.isinf(f)) else round(f, 2)
+    except (TypeError, ValueError):
+        return None
 
 def calc_return(series: pd.Series, days: int) -> float:
     if series is None or len(series) <= days:
@@ -51,11 +52,11 @@ def annualized_vol(series: pd.Series) -> float:
 # Fetch
 # =========================
 def fetch_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    gold   = clean_data(yf.download(GOLD_TICKER,   period=PERIOD, interval="1d", progress=False, auto_adjust=True))
-    silver = clean_data(yf.download(SILVER_TICKER, period=PERIOD, interval="1d", progress=False, auto_adjust=True))
-    if gold.empty or silver.empty:
+    data = fetch_ohlc([GOLD_TICKER, SILVER_TICKER], period=PERIOD)
+    if data.empty:
         raise ValueError("Failed to fetch GOLDBEES or SILVERBEES data.")
-    # Align on common dates
+    gold   = normalize_ohlc(data[GOLD_TICKER])
+    silver = normalize_ohlc(data[SILVER_TICKER])
     gold, silver = gold.align(silver, join="inner", axis=0)
     return gold, silver
 
@@ -121,10 +122,10 @@ def compute_stats(gold: pd.DataFrame, silver: pd.DataFrame) -> dict:
         "gsr_min":       round(gsr_min, 4),
         "gold_trend":    gold_trend,
         "silver_trend":  silver_trend,
-        "gold_vol":      round(gold_vol, 2),
-        "silver_vol":    round(silver_vol, 2),
-        "gold_returns":  {k: round(v, 2) for k, v in gold_returns.items()},
-        "silver_returns":{k: round(v, 2) for k, v in silver_returns.items()},
+        "gold_vol":     _safe(gold_vol),
+        "silver_vol":   _safe(silver_vol),
+        "gold_returns":   {k: _safe(v) for k, v in gold_returns.items()},
+        "silver_returns": {k: _safe(v) for k, v in silver_returns.items()},
         "signal":        signal,
         "strength":      strength,
         "sentiment":     sentiment,
@@ -178,7 +179,7 @@ def run() -> dict:
         save("gold_silver.json", result)
 
         # 2. Send Telegram alert
-        send_message(format_message(stats, ts))
+        # send_message(format_message(stats, ts))
 
         print(f"Gold/Silver done — GSR: {stats['gsr']} | Signal: {stats['signal']}")
         return result
@@ -191,4 +192,8 @@ def run() -> dict:
         return error_result
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     run()

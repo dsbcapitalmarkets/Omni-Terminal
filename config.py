@@ -15,6 +15,12 @@ WATCHLIST: list[str] = []   # e.g. ["RELIANCE", "TCS", "INFY"]
 SCREENER = {
     "min_data_days":   200,    # minimum trading days required
     "volume_lookback": 20,     # days for avg volume calculation
+    "score_factors": {
+        "momentum": True, 
+        "trend": True, 
+        "rsi": False, 
+        "volume": True
+    },
     "score_weights": {
         "momentum": 0.2,
         "trend":    0.3,
@@ -93,6 +99,7 @@ MARKET_BREADTH = {
 EARNINGS = {
     "days_ahead":    7,     # how many days forward to fetch
     "screener_url":  "https://www.screener.in/upcoming-results/",
+    "nse_calendar_url": "https://www.nseindia.com/api/event-calendar",
 }
 
 # =========================

@@ -37,8 +37,7 @@ with c2:
     st.caption(f"Buy ₹{latest.get('dii_buy','—')} Cr · Sell ₹{latest.get('dii_sell','—')} Cr")
 with c3:
     try:
-        combined = float(str(latest.get("fii_net","0")).replace(",","")) + \
-                   float(str(latest.get("dii_net","0")).replace(",",""))
+        combined = latest.get("fii_net", 0) + latest.get("dii_net", 0)
         st.metric("Combined Net", f"₹{combined:,.0f} Cr")
     except Exception:
         st.metric("Combined Net", "—")
@@ -53,8 +52,6 @@ if history:
     try:
         df["date"] = pd.to_datetime(df["date"], format="%d-%b-%Y", errors="coerce")
         df = df.dropna(subset=["date"]).sort_values("date").set_index("date")
-        df["fii_net"] = pd.to_numeric(df["fii_net"].astype(str).str.replace(",",""), errors="coerce")
-        df["dii_net"] = pd.to_numeric(df["dii_net"].astype(str).str.replace(",",""), errors="coerce")
         st.line_chart(df[["fii_net", "dii_net"]], width="stretch")
     except Exception as e:
         st.warning(f"Could not render chart: {e}")

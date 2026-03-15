@@ -1,22 +1,22 @@
 import logging
-from datetime import datetime
 import os
-
 import numpy as np
 import pandas as pd
 import yfinance as yf
-
+from config import PORTFOLIO
+from datetime import datetime
 from core.db import save
-from core.gsheets import get_gspread_client, open_or_create_sheet
+from core.gsheets import get_gspread_client, get_worksheet
 from core.notifier import send_message
 from core.utils import timestamp_str, normalize_ohlc
+from core.fetcher import fetch_ohlc
 
 logger = logging.getLogger(__name__)
 
-NIFTY             = "^NSEI"
+NIFTY           = PORTFOLIO["nifty_ticker"]
 GOOGLE_SHEET_ID   = os.getenv("GOOGLE_SHEETS_ID")
 GOOGLE_SHEET_NAME = "Auto_Portfolio_Reviewer"
-WORKSHEET_NAME    = "Sheet1"
+WORKSHEET_NAME  = PORTFOLIO["worksheet_name"]
 
 # =========================
 # Indicators (your original logic)
@@ -186,7 +186,7 @@ def run() -> dict:
     try:
         # 1. Connect to Google Sheet (source of truth for holdings)
         client    = get_gspread_client()
-        sheet = client.open_by_key(GOOGLE_SHEET_ID).worksheet(WORKSHEET_NAME)
+        sheet     = get_worksheet(client, GOOGLE_SHEET_ID, WORKSHEET_NAME)
         data      = pd.DataFrame(sheet.get_all_records())
 
         if data.empty:
@@ -198,13 +198,10 @@ def run() -> dict:
             for t in data["ticker"].tolist()
         ]
         all_tickers = [NIFTY] + tickers
-        raw = yf.download(
-            tickers=all_tickers, period="6mo", interval="1d",
-            group_by="ticker", threads=True, progress=False,
-            auto_adjust=True,
-        )
+        raw = fetch_ohlc(all_tickers, period="6mo", interval="1d")
+    
         nifty_df = normalize_ohlc(
-            raw[NIFTY].dropna() if NIFTY in raw.columns.get_level_values(0)
+            raw[NIFTY] if NIFTY in raw.columns.get_level_values(0)
             else pd.DataFrame()
         )
 
@@ -220,25 +217,28 @@ def run() -> dict:
 
             try:
                 df = normalize_ohlc(
-                    raw[symbol].dropna()
-                    if symbol in raw.columns.get_level_values(0)
-                    else pd.DataFrame()
+                raw[symbol] if symbol in raw.columns.get_level_values(0)
+                else pd.DataFrame()
                 )
+                
                 if df.empty or len(df) < 50:
                     logger.warning(f"Skipping {symbol}: insufficient data")
                     continue
 
                 result  = analyze_stock(row.to_dict(), df, nifty_df)
-                valid_ct += 1
+                valid_ct += 1   
 
-                # Write back to Sheet
-                update_sheet(sheet, row_idx, result)
-
-                # Alert if signal changed
+                # Compare BEFORE writing last_signal & Alert if signal changed
                 if result["signal"] != str(row.get("last_signal", "")):
                     alerts.append(format_alert(ticker, result))
 
+                # Write computed columns (does NOT touch last_signal column)
+                update_sheet(sheet, row_idx, result)
+
                 holdings.append({"ticker": ticker, **result})
+
+                # Now write last_signal = current signal (becomes "previous" on next run)
+                sheet.update(range_name=f"O{row_idx}", values=[[result["signal"]]])
 
             except Exception as e:
                 logger.warning(f"analyze_stock failed for {symbol}: {e}")
@@ -294,4 +294,8 @@ def run() -> dict:
         return error_result
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     run()

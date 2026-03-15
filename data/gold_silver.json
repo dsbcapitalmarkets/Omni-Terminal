@@ -17,13 +17,13 @@
     "1D": -1.59,
     "1W": -0.38,
     "1M": 1.26,
-    "1Y": NaN
+    "1Y": null
   },
   "silver_returns": {
     "1D": -3.55,
     "1W": -0.92,
     "1M": -1.16,
-    "1Y": NaN
+    "1Y": null
   },
   "signal": "\u270b Hold current positions",
   "strength": "Strong",

@@ -5,12 +5,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import pandas as pd
-import requests
-
+from core.utils import timestamp_str
 from core.db import save, load
-from core.gsheets import get_gspread_client, open_or_create_sheet
+from core.gsheets import get_gspread_client, get_worksheet
 from core.notifier import send_message, send_photo
 from core.utils import timestamp_str
+from core.fetcher import fetch_nse
 
 logger = logging.getLogger(__name__)
 
@@ -21,24 +21,24 @@ SHEET_HEADERS     = ["Date", "FII_Buy", "FII_Sell", "FII_Net",
                       "DII_Buy", "DII_Sell", "DII_Net"]
 MAX_HISTORY       = 60
 
+def _to_float(val) -> float:
+    try:
+        return round(float(str(val).replace(",", "")), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
 # =========================
 # Fetch FII/DII from NSE (your original logic)
 # =========================
 def fetch_fii_dii_data() -> tuple[dict, dict]:
-    print("Fetching FII/DII data from NSE...")
-    url     = "https://www.nseindia.com/api/fiidiiTradeReact"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        r    = requests.get(url, headers=headers, timeout=15)
-        data = r.json()
-        if isinstance(data, list) and len(data) >= 2:
-            fii = data[1] if "FII" in data[1]["category"] else data[0]
-            dii = data[0] if "DII" in data[0]["category"] else data[1]
-            print(f"Fetched — FII net: {fii['netValue']}, DII net: {dii['netValue']}")
-            return fii, dii
-        raise ValueError("Unexpected NSE API response structure.")
-    except Exception as e:
-        raise RuntimeError(f"fetch_fii_dii_data failed: {e}") from e
+    url  = "https://www.nseindia.com/api/fiidiiTradeReact"
+    data = fetch_nse(url)
+    if not isinstance(data, list) or len(data) < 2:
+        raise ValueError(f"Unexpected NSE FII/DII response: {data}")
+    fii = data[1] if "FII" in data[1]["category"] else data[0]
+    dii = data[0] if "DII" in data[0]["category"] else data[1]
+    logger.info(f"FII net: {fii['netValue']}, DII net: {dii['netValue']}")
+    return fii, dii
 
 # =========================
 # Google Sheet — append row (your original logic)
@@ -158,9 +158,7 @@ def run() -> dict:
     try:
         # 1. Connect to Google Sheet
         client    = get_gspread_client()
-        sheet     = open_or_create_sheet(
-            client, GOOGLE_SHEET_NAME, WORKSHEET_NAME, SHEET_HEADERS, GOOGLE_SHEET_ID
-        )
+        sheet     = get_worksheet(client, GOOGLE_SHEET_ID, WORKSHEET_NAME)
 
         # 2. Fetch FII/DII data from NSE
         fii, dii = fetch_fii_dii_data()
@@ -178,12 +176,12 @@ def run() -> dict:
             "status":    "ok",
             "latest": {
                 "date":     fii.get("date"),
-                "fii_buy":  fii.get("buyValue"),
-                "fii_sell": fii.get("sellValue"),
-                "fii_net":  fii.get("netValue"),
-                "dii_buy":  dii.get("buyValue"),
-                "dii_sell": dii.get("sellValue"),
-                "dii_net":  dii.get("netValue"),
+                "fii_buy":  _to_float(fii.get("buyValue")),
+                "fii_sell": _to_float(fii.get("sellValue")),
+                "fii_net":  _to_float(fii.get("netValue")),
+                "dii_buy":  _to_float(dii.get("buyValue")),
+                "dii_sell": _to_float(dii.get("sellValue")),
+                "dii_net":  _to_float(dii.get("netValue")),
                 "signal":   signal,
             },
             "history": history,
@@ -194,12 +192,12 @@ def run() -> dict:
 
         # 7. Generate chart from Sheet history + send to Telegram
         message    = format_message(fii, dii, ts)
-        chart_path = plot_trend(sheet)
+        # chart_path = plot_trend(sheet)
 
-        if chart_path:
-            send_photo(chart_path, caption=message, parse_mode="HTML")
-        else:
-            send_message(message, parse_mode="HTML")
+        # if chart_path:
+        #     send_photo(chart_path, caption=message, parse_mode="HTML")
+        # else:
+        send_message(message, parse_mode="HTML")
 
         print(f"Smart money done — signal: {signal}")
         return result
@@ -215,4 +213,8 @@ def run() -> dict:
         return error_result
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     run()

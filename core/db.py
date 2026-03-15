@@ -14,48 +14,28 @@ logger = logging.getLogger(__name__)
 DATA_DIR     = Path(__file__).resolve().parent.parent / "data"
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
 
+def _get_secret(key: str) -> str:
+    val = os.getenv(key)
+    if val:
+        return val
+    try:
+        import streamlit as st
+        secret = st.secrets[key]
+        return secret if isinstance(secret, str) else dict(secret)
+    except Exception:
+        raise RuntimeError(f"'{key}' not found in environment or Streamlit secrets.")
+
 # =========================
 # Drive client
 # =========================
 def _get_drive_service():
-    """
-    Handles two formats:
-    - GitHub Actions: GOOGLE_DRIVE_CRED is a JSON string
-    - Streamlit Cloud: GOOGLE_DRIVE_CRED is a TOML table (dict-like object)
-    """
-    creds_raw = os.getenv("GOOGLE_DRIVE_CRED")
-
-    if creds_raw:
-        # GitHub Actions — env var is a JSON string
-        creds_dict = json.loads(creds_raw)
-    else:
-        # Streamlit Cloud — read from st.secrets
-        try:
-            import streamlit as st
-            creds_dict = dict(st.secrets["GOOGLE_DRIVE_CRED"])
-        except Exception:
-            raise RuntimeError(
-                "GOOGLE_DRIVE_CRED not found in environment or Streamlit secrets."
-            )
-
+    creds_raw = _get_secret("GOOGLE_DRIVE_CRED")
+    creds_dict = json.loads(creds_raw) if isinstance(creds_raw, str) else creds_raw
     creds = Credentials.from_service_account_info(creds_dict, scopes=DRIVE_SCOPES)
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
-
 def _get_folder_id() -> str:
-    """
-    Handles both GitHub Actions (env var) and Streamlit Cloud (st.secrets).
-    """
-    folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
-    if folder_id:
-        return folder_id
-    try:
-        import streamlit as st
-        return st.secrets["GOOGLE_DRIVE_FOLDER_ID"]
-    except Exception:
-        raise RuntimeError(
-            "GOOGLE_DRIVE_FOLDER_ID not found in environment or Streamlit secrets."
-        )
+    return _get_secret("GOOGLE_DRIVE_FOLDER_ID")
 
 def _find_file_id(service, filename: str, folder_id: str) -> str | None:
     """Return the Drive file ID for filename inside folder, or None if not found."""
@@ -158,24 +138,6 @@ def load(filename: str, default=None):
         except (json.JSONDecodeError, OSError):
             return default
     return default
-
-
-def load_cached(filename: str, default=None):
-    """
-    Cached version of load() for Streamlit pages.
-    Re-fetches from Drive at most once every 15 minutes.
-    """
-    try:
-        import streamlit as st
-
-        @st.cache_data(ttl=900, show_spinner=False)
-        def _cached(fname: str):
-            return load(fname, default)
-
-        return _cached(filename)
-    except ImportError:
-        return load(filename, default)
-
 
 def last_updated(filename: str) -> str | None:
     """Return last modified time of the file from Drive."""

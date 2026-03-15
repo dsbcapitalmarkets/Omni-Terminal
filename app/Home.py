@@ -34,7 +34,7 @@ st.divider()
 # =========================
 def fmt_cr(val) -> str:
     try:
-        v = float(str(val).replace(",", ""))
+        v = float(val)
         if abs(v) >= 1000:
             return f"₹{v/1000:+.1f}K Cr"
         return f"₹{v:+.0f} Cr"
@@ -100,14 +100,6 @@ with r1c2:
         if history:
             df_h = pd.DataFrame(history).tail(10)
             try:
-                df_h["fii_net"] = pd.to_numeric(
-                    df_h["fii_net"].astype(str).str.replace(",", ""),
-                    errors="coerce"
-                )
-                df_h["dii_net"] = pd.to_numeric(
-                    df_h["dii_net"].astype(str).str.replace(",", ""),
-                    errors="coerce"
-                )
                 df_h = df_h.dropna(subset=["fii_net", "dii_net"])
                 if not df_h.empty:
                     st.line_chart(

@@ -1,30 +1,31 @@
 import logging
-from datetime import datetime, timedelta
-
 import requests
-
+from datetime import datetime, timedelta
+from config import EARNINGS
 from core.db import save
 from core.notifier import send_message
-from core.utils import timestamp_str, nse_get
+from core.utils import timestamp_str
+from core.fetcher import fetch_nse
 
 logger = logging.getLogger(__name__)
 
-SCREENER_URL = "https://www.screener.in/upcoming-results/"
-NSE_CALENDAR_URL = "https://www.nseindia.com/api/event-calendar"
+SCREENER_URL = EARNINGS["screener_url"]
+DAYS_AHEAD   = EARNINGS["days_ahead"]
+NSE_CALENDAR_URL = EARNINGS["nse_calendar_url"]
 
 # =========================
 # Fetch from NSE event calendar
 # =========================
-def fetch_earnings(days_ahead: int = 7) -> tuple[list[dict], list[dict]]:
+def fetch_earnings(days_ahead: int = DAYS_AHEAD) -> tuple[list[dict], list[dict]]:
     url = "https://www.nseindia.com/api/event-calendar"
     try:
-        nse_data = nse_get(url, retries=3, backoff=5.0)
+        nse_data = fetch_nse(url)
     except Exception as e:
         logger.warning(f"NSE calendar fetch failed: {e}")
         return [], []
 
     today   = datetime.now().date()
-    date_to = today + timedelta(days=days_ahead)
+    date_to = today + timedelta(days=DAYS_AHEAD)
 
     today_results    = []
     upcoming_results = []
@@ -49,7 +50,7 @@ def fetch_earnings(days_ahead: int = 7) -> tuple[list[dict], list[dict]]:
         }
 
         if event_date == today:
-            upcoming_results.append(entry)
+            today_results.append(entry)
         elif today < event_date <= date_to:
             upcoming_results.append(entry)
 
@@ -101,7 +102,7 @@ def format_message(
 def run() -> dict:
     ts = timestamp_str()
     try:
-        today_results, upcoming_results = fetch_earnings(days_ahead=7)
+        today_results, upcoming_results = fetch_earnings(DAYS_AHEAD)
 
         result = {
             "timestamp":        ts,
@@ -133,4 +134,8 @@ def run() -> dict:
         return error_result
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     run()

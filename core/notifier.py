@@ -15,12 +15,9 @@ def _split_message(message: str, limit: int = 4000) -> list[str]:
     parts.append(message)
     return parts
 
-def _get_creds() -> tuple[str, str]:
-    return os.getenv("TELEGRAM_BOT_TOKEN", ""), os.getenv("TELEGRAM_CHAT_ID", "")
-
 def send_message(text: str, parse_mode: str = "Markdown") -> bool:
-    """Send a text message. Returns True on success."""
-    bot_token, chat_id = _get_creds()
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id   = os.getenv("TELEGRAM_CHAT_ID", "")
     if not bot_token or not chat_id:
         logger.error("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set.")
         return False
@@ -40,8 +37,8 @@ def send_message(text: str, parse_mode: str = "Markdown") -> bool:
     return success
 
 def send_photo(photo_path: str, caption: str = "", parse_mode: str = "HTML") -> bool:
-    """Send a photo file. Used by smart money flow chart."""
-    bot_token, chat_id = _get_creds()
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id   = os.getenv("TELEGRAM_CHAT_ID", "")
     if not bot_token or not chat_id:
         logger.error("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set.")
         return False

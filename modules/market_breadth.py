@@ -1,21 +1,21 @@
 import logging
 from datetime import datetime
 import os
-
 import pandas as pd
 import requests
 import yfinance as yf
-
+from config import MARKET_BREADTH
 from core.db import save
-from core.gsheets import get_gspread_client, open_or_create_sheet
+from core.gsheets import get_gspread_client, get_worksheet
 from core.notifier import send_message
-from core.utils import timestamp_str, nse_get
+from core.utils import timestamp_str, normalize_ohlc
+from core.fetcher import fetch_ohlc, fetch_nse
 
 logger = logging.getLogger(__name__)
 
 GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEETS_ID")
-GOOGLE_SHEET_NAME = "Market_Breadth_Tracker"
-WORKSHEET_NAME    = "Sheet1"
+GOOGLE_SHEET_NAME = MARKET_BREADTH["google_sheet_name"]
+WORKSHEET_NAME    = MARKET_BREADTH["worksheet_name"]
 SHEET_HEADERS     = [
     "timestamp", "advances", "declines", "unchanged",
     "new_highs", "new_lows", "ad_ratio", "nh_nl_spread",
@@ -27,7 +27,7 @@ SHEET_HEADERS     = [
 # =========================
 def get_nse_data() -> tuple[dict, list[str]]:
     url      = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20TOTAL%20MARKET"
-    response = nse_get(url)          # returns full JSON dict with retry/backoff
+    response = fetch_nse(url)         # returns full JSON dict with retry/backoff
     nse_data = response["data"]      # renamed to nse_data to avoid collision
 
     symbols   = []
@@ -77,10 +77,7 @@ def get_nse_data() -> tuple[dict, list[str]]:
 # Compute DMA counts (your original logic)
 # =========================
 def compute_dma_counts(symbols: list[str]) -> tuple[int, float, int, float]:
-    data = yf.download(
-        tickers=symbols, period="1y", interval="1d",
-        group_by="ticker", threads=True, progress=False,
-    )
+    data = fetch_ohlc(symbols, period="1y", interval="1d")
     num_above_50 = num_above_200 = valid_stocks = 0
 
     for sym in symbols:
@@ -168,9 +165,7 @@ def run() -> dict:
         # 4. Write to Google Sheet (historical log)
         try:
             client    = get_gspread_client()
-            worksheet = open_or_create_sheet(
-                client, GOOGLE_SHEET_NAME, WORKSHEET_NAME, SHEET_HEADERS, GOOGLE_SHEET_ID
-            )
+            worksheet = get_worksheet(client, GOOGLE_SHEET_ID, WORKSHEET_NAME)
             write_to_gsheet(worksheet, breadth, regime)
         except Exception as e:
             logger.warning(f"Google Sheet write failed (non-fatal): {e}")
@@ -200,4 +195,8 @@ def run() -> dict:
         return error_result
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     run()

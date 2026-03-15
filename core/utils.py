@@ -38,7 +38,7 @@ def normalize_ohlc(df: pd.DataFrame) -> pd.DataFrame:
     """Flatten yfinance MultiIndex columns if present."""
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
-    return df
+    return df.dropna()
 
 def nse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
     """

@@ -21,3 +21,6 @@ streamlit>=1.35
 
 # Utilities
 pytz>=2024.1
+
+# For loading environment variables
+python-dotenv>=1.0

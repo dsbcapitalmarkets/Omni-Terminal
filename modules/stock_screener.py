@@ -1,14 +1,14 @@
 import logging
-from datetime import datetime
-
 import pandas as pd
 import requests
 import yfinance as yf
+from datetime import datetime
 from ta.momentum import RSIIndicator
-
+from config import SCREENER
 from core.db import save
 from core.notifier import send_message
-from core.utils import timestamp_str, safe_scalar, nse_get
+from core.utils import timestamp_str, safe_scalar, normalize_ohlc
+from core.fetcher import fetch_ohlc, fetch_nse
 
 logger = logging.getLogger(__name__)
 
@@ -16,34 +16,23 @@ logger = logging.getLogger(__name__)
 # Fetch NIFTY TOTAL MARKET Universe
 # =========================
 def get_nifty_symbols() -> list[str]:
-    print("Fetching universe from NSE...")
     url  = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20TOTAL%20MARKET"
-    data = nse_get(url)
-    symbols = []
-    for item in data["data"]:
-        if item.get("priority") == 1:
-            continue
-        symbol = item.get("symbol")
-        if symbol:
-            symbols.append(symbol)
-    print(f"Total symbols fetched: {len(symbols)}")
+    data = fetch_nse(url)
+    symbols = [
+        item["symbol"]
+        for item in data["data"]
+        if item.get("priority") != 1 and item.get("symbol")
+    ]
+    logger.info(f"Universe fetched: {len(symbols)} symbols")
     return symbols
 
 # =========================
 # Apply Filters (Batch Download)
 # =========================
-def apply_filters_batch(symbols: list[str]) -> tuple[list[str], object]:
+def apply_filters_batch(symbols: list[str]) -> tuple[list[str], pd.DataFrame]:
     """Returns (passed_symbols, full_data_df) — df reused in score_and_rank."""
     yahoo_symbols = [f"{sym}.NS" for sym in symbols]
-    data = yf.download(
-        tickers=yahoo_symbols,
-        period="365d",
-        interval="1d",
-        auto_adjust=True,
-        group_by="ticker",
-        threads=True,
-        progress=False,
-    )
+    data = fetch_ohlc(yahoo_symbols, period="365d", interval="1d")
     passed_stocks = []
     for sym in symbols:
         yahoo_symbol = f"{sym}.NS"
@@ -86,9 +75,9 @@ def score_and_rank(
     weights: dict = None,
 ) -> pd.DataFrame:
     if use_factors is None:
-        use_factors = {"momentum": True, "trend": True, "rsi": False, "volume": True}
+        use_factors = SCREENER["score_factors"]
     if weights is None:
-        weights = {"momentum": 0.2, "trend": 0.3, "rsi": 0.1, "volume": 0.4}
+        weights = SCREENER["score_weights"]
 
     results = []
     for sym in filtered_stocks:
@@ -178,4 +167,8 @@ def run() -> dict:
         return error_result
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     run()

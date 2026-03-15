@@ -1,9 +1,10 @@
 import logging
-from datetime import datetime
-
 import pandas as pd
 import yfinance as yf
-
+from config import SECTORS, SECTOR_ROTATION
+from datetime import datetime
+from core.utils import timestamp_str, normalize_ohlc
+from core.fetcher import fetch_ohlc
 from core.db import save, load
 from core.notifier import send_message
 from core.utils import timestamp_str
@@ -13,18 +14,7 @@ logger = logging.getLogger(__name__)
 # =========================
 # Config
 # =========================
-SECTORS = {
-    "NIFTY 50": "^NSEI",
-    "BANK":     "^NSEBANK",
-    "IT":       "^CNXIT",
-    "AUTO":     "^CNXAUTO",
-    "FMCG":     "^CNXFMCG",
-    "PHARMA":   "^CNXPHARMA",
-    "METAL":    "^CNXMETAL",
-    "ENERGY":   "^CNXENERGY",
-    "REALTY":   "^CNXREALTY",
-    "MEDIA":    "^CNXMEDIA",
-}
+
 
 PREV_STATE_FILE = "sector_prev_state.json"  # lives in data/
 
@@ -38,35 +28,27 @@ def get_run_mode() -> str:
 # Fetch (your original logic)
 # =========================
 def fetch_data(tickers: dict, period: str = "6mo", interval: str = "1d") -> pd.DataFrame:
+    symbols = list(tickers.values())
+    names   = list(tickers.keys())
+    raw     = fetch_ohlc(symbols, period=period, interval=interval)
+    if raw.empty:
+        raise ValueError("No sector data fetched.")
+
     data = {}
-    for name, symbol in tickers.items():
+    for name, symbol in zip(names, symbols):
         try:
-            df = yf.download(symbol, period=period, interval=interval,
-                             progress=False, auto_adjust=True)
-            if isinstance(df.columns, pd.MultiIndex):
-                if "Close" in df.columns.get_level_values(0):
-                    close = df["Close"]
-                    if isinstance(close, pd.DataFrame):
-                        close = close.iloc[:, 0]
-                else:
-                    continue
-            else:
-                if "Close" not in df.columns:
-                    continue
-                close = df["Close"]
+            close = normalize_ohlc(raw[symbol])["Close"]
             close.name = name
             data[name] = close
         except Exception as e:
-            logger.warning(f"fetch_data skipped {name}: {e}")
-            continue
+            logger.warning(f"Skipped {name}: {e}")
 
     if not data:
-        raise ValueError("No sector data fetched.")
+        raise ValueError("No valid sector data after processing.")
 
     df_final = pd.concat(data.values(), axis=1)
     df_final.columns = list(data.keys())
-    df_final.dropna(inplace=True)
-    return df_final
+    return df_final.dropna()
 
 # =========================
 # Analyze (your original logic)
@@ -247,4 +229,8 @@ def run() -> dict:
         return error_result
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     run()
