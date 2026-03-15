@@ -1,0 +1,88 @@
+name: Run Single Modules
+
+on:
+  workflow_dispatch:   # manual trigger only — never on a schedule
+
+jobs:
+  run-all:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+    #   - name: 1 — Market Breadth
+    #     env:
+    #       TELEGRAM_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN_MBT }}
+    #       TELEGRAM_CHAT_ID:       ${{ secrets.TELEGRAM_CHAT_ID }}
+    #       GOOGLE_DRIVE_CRED:      ${{ secrets.GOOGLE_DRIVE_CRED }}
+    #       GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+    #       GOOGLE_SHEETS_ID:       ${{ secrets.GOOGLE_SHEET_ID_MBT }}
+    #     run: python -m modules.market_breadth
+
+      - name: 2 — Stock Screener
+        env:
+          TELEGRAM_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN_CSS }}
+          TELEGRAM_CHAT_ID:       ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_DRIVE_CRED:      ${{ secrets.GOOGLE_DRIVE_CRED }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+        run: python -m modules.stock_screener
+
+    #   - name: 3 — Gold Silver Ratio
+    #     env:
+    #       TELEGRAM_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN_GSR }}
+    #       TELEGRAM_CHAT_ID:       ${{ secrets.TELEGRAM_CHAT_ID }}
+    #       GOOGLE_DRIVE_CRED:      ${{ secrets.GOOGLE_DRIVE_CRED }}
+    #       GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+    #     run: python -m modules.gold_silver_ratio
+
+    #   - name: 4 — Sector Rotation
+    #     env:
+    #       TELEGRAM_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN_SRT }}
+    #       TELEGRAM_CHAT_ID:       ${{ secrets.TELEGRAM_CHAT_ID }}
+    #       GOOGLE_DRIVE_CRED:      ${{ secrets.GOOGLE_DRIVE_CRED }}
+    #       GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+    #     run: python -m modules.sector_rotation
+
+    #   - name: 5 — Smart Money Flow
+    #     env:
+    #       TELEGRAM_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN_SMF }}
+    #       TELEGRAM_CHAT_ID:       ${{ secrets.TELEGRAM_CHAT_ID }}
+    #       GOOGLE_DRIVE_CRED:      ${{ secrets.GOOGLE_DRIVE_CRED }}
+    #       GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+    #       GOOGLE_SHEETS_ID:       ${{ secrets.GOOGLE_SHEET_ID_SMF }}
+    #     run: python -m modules.smart_money
+
+    #   - name: 6 — Earnings Tracker
+    #     env:
+    #       TELEGRAM_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN_RET }}
+    #       TELEGRAM_CHAT_ID:       ${{ secrets.TELEGRAM_CHAT_ID }}
+    #       GOOGLE_DRIVE_CRED:      ${{ secrets.GOOGLE_DRIVE_CRED }}
+    #       GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+    #     run: python -m modules.earnings_tracker
+
+    #   - name: 7 — Portfolio Review
+    #     env:
+    #       TELEGRAM_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN_APR }}
+    #       TELEGRAM_CHAT_ID:       ${{ secrets.TELEGRAM_CHAT_ID }}
+    #       GOOGLE_DRIVE_CRED:      ${{ secrets.GOOGLE_DRIVE_CRED }}
+    #       GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+    #       GOOGLE_SHEETS_ID:       ${{ secrets.GOOGLE_SHEET_ID_APR }}
+    #     run: python -m modules.portfolio_review
+
+      - name: Done
+        run: echo "✅ Module completed successfully."
