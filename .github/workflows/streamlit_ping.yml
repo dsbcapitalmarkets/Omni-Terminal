@@ -12,4 +12,4 @@ jobs:
     steps:
       - name: Ping Streamlit App
         run: |
-          curl -I https://dsbcapital-omni-terminal.streamlit.app/?health=1
+          curl -L https://dsbcapital-omni-terminal.streamlit.app/?health=1
