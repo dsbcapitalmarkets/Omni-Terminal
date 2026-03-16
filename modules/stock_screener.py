@@ -254,7 +254,8 @@ def format_message(ranked_df: pd.DataFrame, ts: str) -> str:
     msg = f"📊 <b>Stock Screener</b> ({ts})\n\n"
     for i, row in enumerate(ranked_df.head(20).itertuples(), 1):
         url  = f"https://www.screener.in/company/{row.symbol}/"
-        msg += f"{i}. ✅ <a href='{url}'>{row.symbol}</a> — score: <code>{row.score}</code>\n"
+        msg += f"{i}. ✅ <a href='{url}'>{row.symbol}</a>\n"
+        #msg += f"{i}. ✅ <a href='{url}'>{row.symbol}</a> — score: <code>{row.score}</code>\n"
     msg += "\n💡 EMA/SMA trend + volume filters."
     return msg
 
