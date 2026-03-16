@@ -2,9 +2,15 @@ import streamlit as st
 import pandas as pd
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from app.load_data import preload
 from config import DATA_FILES
+
+# --- Health check endpoint ---
+query_params = st.query_params
+
+if "health" in query_params:
+    st.write("OK")
+    st.stop()
 
 st.set_page_config(
     page_title="DSB Capital - Omni Terminal",

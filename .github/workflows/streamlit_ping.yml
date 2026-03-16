@@ -1,0 +1,15 @@
+name: Streamlit Ping
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # runs every 10 minutes
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping Streamlit App
+        run: |
+          curl -I https://dsbcapital-omni-terminal.streamlit.app/?health=1
