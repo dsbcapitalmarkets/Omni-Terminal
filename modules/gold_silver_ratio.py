@@ -52,7 +52,7 @@ def annualized_vol(series: pd.Series) -> float:
 # Fetch
 # =========================
 def fetch_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    data = fetch_ohlc([GOLD_TICKER, SILVER_TICKER], period=PERIOD)
+    data = fetch_ohlc([GOLD_TICKER, SILVER_TICKER], period="2Y")
     if data.empty:
         raise ValueError("Failed to fetch GOLDBEES or SILVERBEES data.")
     gold   = normalize_ohlc(data[GOLD_TICKER])
@@ -66,6 +66,8 @@ def fetch_data() -> tuple[pd.DataFrame, pd.DataFrame]:
 def compute_stats(gold: pd.DataFrame, silver: pd.DataFrame) -> dict:
     gold_close   = safe_scalar(gold["Close"].iloc[-1])
     silver_close = safe_scalar(silver["Close"].iloc[-1])
+    gold_6mo   = gold.iloc[-126:]
+    silver_6mo = silver.iloc[-126:]
 
     # Daily returns
     gold["Return"]   = gold["Close"].pct_change() * 100
@@ -79,7 +81,7 @@ def compute_stats(gold: pd.DataFrame, silver: pd.DataFrame) -> dict:
     silver_returns = {k: calc_return(silver["Close"], v) for k, v in periods.items()}
 
     # GSR statistics
-    historical_gsr = (gold["Close"] / silver["Close"]).dropna()
+    historical_gsr = (gold_6mo["Close"] / silver_6mo["Close"]).dropna()
     gsr      = gold_close / silver_close
     gsr_mean = safe_scalar(historical_gsr.mean())
     gsr_std  = safe_scalar(historical_gsr.std())

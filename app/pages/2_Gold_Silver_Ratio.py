@@ -36,21 +36,21 @@ else:
 
 # ── GSR stats ─────────────────────────────────────────────
 col1, col2 = st.columns(2)
-with col1:
-    st.subheader("GSR statistics")
-    st.dataframe(pd.DataFrame({
-        "Metric": ["Current GSR", "6M Mean", "Std Dev", "6M Min", "6M Max", "Deviation from mean"],
-        "Value":  [
-            f"{data['gsr']:.4f}",
-            f"{data['gsr_mean']:.4f}",
-            f"{data['gsr_std']:.4f}",
-            f"{data['gsr_min']:.4f}",
-            f"{data['gsr_max']:.4f}",
-            f"{data['gsr_dev_pct']:+.2f}%",
-        ]
-    }), hide_index=True, width="stretch")
+# with col1:
+    # st.subheader("GSR statistics")
+    # st.dataframe(pd.DataFrame({
+    #     "Metric": ["Current GSR", "6M Mean", "Std Dev", "6M Min", "6M Max", "Deviation from mean"],
+    #     "Value":  [
+    #         f"{data['gsr']:.4f}",
+    #         f"{data['gsr_mean']:.4f}",
+    #         f"{data['gsr_std']:.4f}",
+    #         f"{data['gsr_min']:.4f}",
+    #         f"{data['gsr_max']:.4f}",
+    #         f"{data['gsr_dev_pct']:+.2f}%",
+    #     ]
+    # }), hide_index=True, width="stretch")
 
-with col2:
+with col1:
     st.subheader("Trends & volatility")
     st.dataframe(pd.DataFrame({
         "":           ["Gold", "Silver"],
@@ -58,19 +58,20 @@ with col2:
         "Ann. Vol":   [fmt_pct(data["gold_vol"]), fmt_pct(data["silver_vol"])],
     }), hide_index=True, width="stretch")
 
-st.divider()
+# st.divider()
 
 # ── Returns table ─────────────────────────────────────────
-st.subheader("Returns comparison")
-gr = data.get("gold_returns",   {})
-sr = data.get("silver_returns", {})
-periods = ["1D", "1W", "1M", "1Y"]
-returns_df = pd.DataFrame({
-    "Period":  periods,
-    "Gold":    [fmt_pct(gr.get(p), plus=True) for p in periods],
-    "Silver":  [fmt_pct(sr.get(p), plus=True) for p in periods],
-})
-st.dataframe(returns_df, hide_index=True, width="stretch")
+with col2:
+    st.subheader("Returns comparison")
+    gr = data.get("gold_returns",   {})
+    sr = data.get("silver_returns", {})
+    periods = ["1D", "1W", "1M", "1Y"]
+    returns_df = pd.DataFrame({
+        "Period":  periods,
+        "Gold":    [fmt_pct(gr.get(p), plus=True) for p in periods],
+        "Silver":  [fmt_pct(sr.get(p), plus=True) for p in periods],
+    })
+    st.dataframe(returns_df, hide_index=True, width="stretch")
 
 st.divider()
 

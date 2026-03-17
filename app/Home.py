@@ -22,11 +22,11 @@ st.set_page_config(
 # ── Title row with refresh button top right ───────────────
 title_col, btn_col = st.columns([6, 1])
 with title_col:
-    st.title("📈 DSB capital - Omni Terminal")
+    st.title("📈 DSB Capital - Omni Terminal")
     st.caption("Data refreshes EOD.")
 with btn_col:
     st.write("")
-    if st.button("🔄 Refresh", use_container_width=True):
+    if st.button("🔄", use_container_width=True):
         preload(force=True)
         st.rerun()
 

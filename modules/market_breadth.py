@@ -5,7 +5,7 @@ import pandas as pd
 import requests
 import yfinance as yf
 from config import MARKET_BREADTH
-from core.db import save
+from core.db import save, load
 from core.gsheets import get_gspread_client, get_worksheet
 from core.notifier import send_message
 from core.utils import timestamp_str, normalize_ohlc
@@ -13,7 +13,7 @@ from core.fetcher import fetch_ohlc, fetch_nse
 
 logger = logging.getLogger(__name__)
 
-GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEETS_ID")
+GOOGLE_SHEET_ID   = os.getenv("GOOGLE_SHEETS_ID")
 GOOGLE_SHEET_NAME = MARKET_BREADTH["google_sheet_name"]
 WORKSHEET_NAME    = MARKET_BREADTH["worksheet_name"]
 SHEET_HEADERS     = [
@@ -22,13 +22,16 @@ SHEET_HEADERS     = [
     "num_above_50", "pct_above_50", "num_above_200", "pct_above_200", "regime",
 ]
 
+MAX_HISTORY = 60   # rolling window kept in breadth.json (mirrors smart_money)
+
+
 # =========================
-# Fetch NSE data (your original logic)
+# Fetch NSE data (unchanged)
 # =========================
 def get_nse_data() -> tuple[dict, list[str]]:
     url      = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20TOTAL%20MARKET"
-    response = fetch_nse(url)         # returns full JSON dict with retry/backoff
-    nse_data = response["data"]      # renamed to nse_data to avoid collision
+    response = fetch_nse(url)
+    nse_data = response["data"]
 
     symbols   = []
     advances  = declines = unchanged = 0
@@ -73,8 +76,9 @@ def get_nse_data() -> tuple[dict, list[str]]:
     }
     return breadth, symbols
 
+
 # =========================
-# Compute DMA counts (your original logic)
+# Compute DMA counts (unchanged)
 # =========================
 def compute_dma_counts(symbols: list[str]) -> tuple[int, float, int, float]:
     data = fetch_ohlc(symbols, period="1y", interval="1d")
@@ -99,8 +103,9 @@ def compute_dma_counts(symbols: list[str]) -> tuple[int, float, int, float]:
     pct_200 = round((num_above_200 / valid_stocks) * 100, 2) if valid_stocks else 0
     return num_above_50, pct_50, num_above_200, pct_200
 
+
 # =========================
-# Regime classifier (your original logic)
+# Regime classifier (unchanged)
 # =========================
 def classify_regime(pct_200: float, nh: int, nl: int) -> str:
     if pct_200 > 65 and nh > nl:    return "🟢 Strong Bullish Breadth"
@@ -108,8 +113,47 @@ def classify_regime(pct_200: float, nh: int, nl: int) -> str:
     if 40 <= pct_200 <= 60:         return "🟡 Transition Zone"
     return "⚪ Mixed Breadth"
 
+
 # =========================
-# Format Telegram message (your original format)
+# History management — mirrors smart_money pattern
+# =========================
+def _load_history() -> list[dict]:
+    """Load existing history from breadth.json, return [] if not found."""
+    existing = load("breadth.json", default={})
+    return existing.get("history", [])
+
+
+def _append_history(history: list[dict], breadth: dict, regime: str) -> list[dict]:
+    """
+    Append today's snapshot to the rolling history list.
+    Deduplicates by date so re-runs on the same day don't double-add.
+    Keeps the last MAX_HISTORY entries.
+    """
+    today = datetime.now().strftime("%d-%b-%Y")
+
+    new_row = {
+        "date":          today,
+        "num_above_50":  breadth["num_above_50"],
+        "pct_above_50":  breadth["pct_above_50"],
+        "num_above_200": breadth["num_above_200"],
+        "pct_above_200": breadth["pct_above_200"],
+        "advances":      breadth["advances"],
+        "declines":      breadth["declines"],
+        "ad_ratio":      breadth["ad_ratio"],
+        "nh_nl_spread":  breadth["nh_nl_spread"],
+        "regime":        regime,
+    }
+
+    # Remove any existing entry for today (idempotent re-run)
+    history = [r for r in history if r.get("date") != today]
+    history.append(new_row)
+
+    # Keep rolling window
+    return history[-MAX_HISTORY:]
+
+
+# =========================
+# Format Telegram message (unchanged)
 # =========================
 def format_message(results: dict, regime: str, timestamp: str) -> str:
     return f"""📊 *Market Breadth — Nifty Total Market*
@@ -131,8 +175,9 @@ def format_message(results: dict, regime: str, timestamp: str) -> str:
 🧭 Regime: {regime}
 ━━━━━━━━━━━━━━━━━━"""
 
+
 # =========================
-# Write to Google Sheet (your original logic)
+# Write to Google Sheet (unchanged)
 # =========================
 def write_to_gsheet(worksheet, results: dict, regime: str) -> None:
     row = {**results, "regime": regime,
@@ -140,6 +185,7 @@ def write_to_gsheet(worksheet, results: dict, regime: str) -> None:
     values = [row[k] for k in SHEET_HEADERS]
     worksheet.append_row(values)
     logger.info("Market breadth row appended to Google Sheet.")
+
 
 # =========================
 # run() — called by GitHub Actions
@@ -170,21 +216,26 @@ def run() -> dict:
         except Exception as e:
             logger.warning(f"Google Sheet write failed (non-fatal): {e}")
 
-        # 5. Build result dict
+        # 5. Load existing history → append today → keep rolling window
+        history = _load_history()
+        history = _append_history(history, breadth, regime)
+
+        # 6. Build result dict (history included — same shape as smart_money.json)
         result = {
             "timestamp":    ts,
             "status":       "ok",
             "regime":       regime,
             **breadth,
+            "history":      history,
         }
 
-        # 6. Save to data/breadth.json for Streamlit dashboard
+        # 7. Save to breadth.json for Streamlit dashboard
         save("breadth.json", result)
 
-        # 7. Send Telegram alert
+        # 8. Send Telegram alert
         send_message(format_message(breadth, regime, ts))
 
-        print(f"Market breadth done — regime: {regime}")
+        print(f"Market breadth done — regime: {regime}, history: {len(history)} rows")
         return result
 
     except Exception as e:
@@ -193,6 +244,7 @@ def run() -> dict:
         save("breadth.json", error_result)
         send_message(f"❌ *Market Breadth Tracker failed*\n`{e}`")
         return error_result
+
 
 if __name__ == "__main__":
     logging.basicConfig(

@@ -92,13 +92,13 @@ MODULES = [
     {
         "name":     "Stock Screener",
         "icon":     "📊",
-        "desc":     "Scans NIFTY Total Market universe with EMA/SMA/volume filters",
+        "desc":     "Scans NIFTY Total Market universe with custom filters",
         "schedule": MODULE_SCHEDULES.get("Stock Screener", "—"),
     },
     {
         "name":     "Gold Silver Ratio",
         "icon":     "🥇",
-        "desc":     "Tracks GoldBeES vs SilverBeES ratio with signal generation",
+        "desc":     "Tracks Gold ETF vs Silver ETF ratio with signal generation",
         "schedule": MODULE_SCHEDULES.get("Gold Silver Ratio", "—"),
     },
     {
@@ -128,7 +128,7 @@ MODULES = [
     {
         "name":     "Portfolio Review",
         "icon":     "💼",
-        "desc":     "Auto-analyzes holdings with Supertrend + EMA signals",
+        "desc":     "Auto-analyzes holdings with custom rules and actionable insights",
         "schedule": MODULE_SCHEDULES.get("Portfolio Review", "—"),
     },
 ]
