@@ -1,6 +1,5 @@
 import math
 import logging
-import math
 import pandas as pd
 from core.fetcher import fetch_ohlc
 from core.utils import normalize_ohlc
@@ -52,7 +51,7 @@ def annualized_vol(series: pd.Series) -> float:
 # Fetch
 # =========================
 def fetch_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    data = fetch_ohlc([GOLD_TICKER, SILVER_TICKER], period="2Y")
+    data = fetch_ohlc([GOLD_TICKER, SILVER_TICKER], period="2y")
     if data.empty:
         raise ValueError("Failed to fetch GOLDBEES or SILVERBEES data.")
     gold   = normalize_ohlc(data[GOLD_TICKER])
