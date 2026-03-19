@@ -11,6 +11,8 @@ from core.utils import nse_get, normalize_ohlc
 
 logger = logging.getLogger(__name__)
 
+yf.set_tz_cache_location("/tmp/yfinance_cache")
+
 def fetch_ohlc(
     tickers: str | list[str],
     period: str = "6mo",
