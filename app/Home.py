@@ -260,36 +260,66 @@ st.divider()
 # =========================
 st.subheader("📅 Results & Earnings")
 earn = all_data.get("Earnings Tracker")
+
 if earn and earn.get("status") == "ok":
-    c1, c2 = st.columns(2)
-    c1.metric("Results today",     earn.get("today_count",    0))
-    c2.metric("Upcoming (7 days)", earn.get("upcoming_count", 0))
+
+    today_list    = earn.get("today_results",    [])
+    upcoming_list = earn.get("upcoming_results", [])
+    today_counts  = earn.get("today_counts",     {"quarterly": 0, "annual": 0, "board": 0})
+    upc_counts    = earn.get("upcoming_counts",  {"quarterly": 0, "annual": 0, "board": 0})
+
+    # ── Summary metrics ───────────────────────────────────
+    mc1, mc2, mc3, mc4 = st.columns(4)
+    mc1.metric("Results today",
+               today_counts.get("quarterly", 0) + today_counts.get("annual", 0))
+    mc2.metric("Board meetings today",  today_counts.get("board", 0))
+    mc3.metric("Results upcoming",
+               upc_counts.get("quarterly", 0) + upc_counts.get("annual", 0))
+    mc4.metric("Meetings upcoming",     upc_counts.get("board", 0))
 
     e1, e2 = st.columns(2)
 
+    # ── Today ─────────────────────────────────────────────
     with e1:
-        today_list = earn.get("today_results", [])
         if today_list:
-            st.markdown("**🔔 Today's results**")
-            for r in today_list:
-                st.caption(f"• **{r['symbol']}** — {r['company']}")
-        else:
-            st.info("No results announced today.")
+            # Separate results from board meetings
+            results_today = [r for r in today_list if r.get("category") != "board"]
+            boards_today  = [r for r in today_list if r.get("category") == "board"]
 
+            if results_today:
+                st.markdown("**🔔 Results declared today**")
+                for r in results_today:
+                    st.caption(f"• **{r['symbol']}** — {r['company']} _{r['purpose_label']}_")
+
+            if boards_today:
+                st.markdown("**🏛️ Board meetings today**")
+                for r in boards_today:
+                    st.caption(f"• **{r['symbol']}** — {r['company']}")
+        else:
+            st.info("No result events today.")
+
+    # ── Upcoming ──────────────────────────────────────────
     with e2:
-        upcoming = earn.get("upcoming_results", [])
-        if upcoming:
-            st.markdown("**📅 Upcoming**")
+        if upcoming_list:
+            st.markdown("**📅 Upcoming (next 7 days)**")
             current_date = None
-            for r in upcoming[:10]:
+            shown = 0
+            for r in upcoming_list[:12]:   # cap at 12 rows on home page
                 if r["date"] != current_date:
                     current_date = r["date"]
                     st.caption(f"**{current_date}**")
-                st.caption(f"&nbsp;&nbsp;&nbsp;• **{r['symbol']}** — {r['company']}")
+                icon = "📊" if r.get("category") != "board" else "🏛️"
+                st.caption(f"&nbsp;&nbsp;&nbsp;{icon} **{r['symbol']}** — {r['company']}")
+                shown += 1
+
+            remaining = len(upcoming_list) - shown
+            if remaining > 0:
+                st.caption(f"_+ {remaining} more → see full page_")
         else:
-            st.info("No upcoming results in next 7 days.")
+            st.info("No upcoming events in next 7 days.")
 
     st.caption(f"Last updated: {earn.get('timestamp','—')}")
+
 else:
     st.info("No data yet.")
 
