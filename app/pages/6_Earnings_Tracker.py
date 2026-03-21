@@ -198,11 +198,7 @@ with tab_all:
         df_all["screener"] = df_all["symbol"].apply(
             lambda s: f"https://www.screener.in/company/{s}/"
         )
-        df_all["when"] = df_all.apply(
-            lambda r: "Today" if r == data.get("today_results", [{}])[0].get("date", "")
-            else r["date"], axis=1
-        )
-        # Simpler: just show the date column as-is
+
         st.dataframe(
             df_all[["date", "symbol", "company", "purpose_label", "series", "screener"]],
             hide_index=True,
