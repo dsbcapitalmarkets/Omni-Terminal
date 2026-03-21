@@ -32,11 +32,36 @@ st.divider()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-CATEGORY_ICON = {"quarterly": "📊", "annual": "📋", "board": "🏛️"}
+CATEGORY_ICON  = {"quarterly": "📊", "annual": "📋", "board": "🏛️"}
 CATEGORY_LABEL = {"quarterly": "Results", "annual": "Annual Results", "board": "Board Meeting"}
 
-def category_badge(cat: str) -> str:
-    return f"{CATEGORY_ICON.get(cat,'📋')} {CATEGORY_LABEL.get(cat, cat.title())}"
+# Purpose → category mapping (mirrors modules/earnings_tracker.py)
+_PURPOSE_CATEGORY = {
+    "quarterly results":                      "quarterly",
+    "financial results":                      "quarterly",
+    "half yearly results":                    "quarterly",
+    "unaudited financial results":            "quarterly",
+    "annual results":                         "annual",
+    "board meeting":                          "board",
+    "board meeting-finalisation of accounts": "board",
+}
+
+def _normalize(events: list[dict]) -> list[dict]:
+    """
+    Backfill 'category' and 'purpose_label' fields that are missing in old
+    cached JSON (pre-fix). Safe to call on already-normalized entries too.
+    """
+    out = []
+    for r in events:
+        r = dict(r)  # don't mutate the original
+        if "category" not in r:
+            key = r.get("purpose", "").lower().strip()
+            r["category"] = _PURPOSE_CATEGORY.get(key, "board")
+        if "purpose_label" not in r:
+            icon = CATEGORY_ICON.get(r["category"], "📋")
+            r["purpose_label"] = f"{icon} {r.get('purpose', r['category'].title())}"
+        out.append(r)
+    return out
 
 # ── Tab layout ────────────────────────────────────────────────────────────────
 tab_today, tab_upcoming, tab_all = st.tabs([
@@ -49,7 +74,7 @@ tab_today, tab_upcoming, tab_all = st.tabs([
 # TAB 1 — TODAY
 # ============================================================
 with tab_today:
-    today_list = data.get("today_results", [])
+    today_list = _normalize(data.get("today_results", []))
 
     if not today_list:
         st.info("No result events scheduled for today.")
@@ -106,7 +131,7 @@ with tab_today:
 # TAB 2 — UPCOMING
 # ============================================================
 with tab_upcoming:
-    upcoming = data.get("upcoming_results", [])
+    upcoming = _normalize(data.get("upcoming_results", []))
 
     if not upcoming:
         st.info("No upcoming events in the next 7 days.")
@@ -164,7 +189,7 @@ with tab_upcoming:
 # TAB 3 — FULL TABLE (all events, sortable)
 # ============================================================
 with tab_all:
-    all_events = data.get("today_results", []) + data.get("upcoming_results", [])
+    all_events = _normalize(data.get("today_results", []) + data.get("upcoming_results", []))
 
     if not all_events:
         st.info("No data available.")
