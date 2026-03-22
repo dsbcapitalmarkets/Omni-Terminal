@@ -43,18 +43,24 @@ def normalize_ohlc(df: pd.DataFrame) -> pd.DataFrame:
 def nse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
     """
     Hardened NSE API fetch with session cookie + retry/backoff.
-    Used by: stock_screener, market_breadth, earnings_tracker.
+    Used by: stock_screener, market_breadth, earnings_tracker, universe_updater.
 
     Raises RuntimeError after all retries exhausted.
     """
     headers = {
-        "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                           "AppleWebKit/537.36 (KHTML, like Gecko) "
-                           "Chrome/120.0.0.0 Safari/537.36",
-        "Accept":          "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer":         "https://www.nseindia.com/",
-        "Connection":      "keep-alive",
+        "User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0",
+        "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language":           "en-US,en;q=0.9",
+        "Accept-Encoding":           "gzip, deflate, br, zstd",
+        "Connection":                "keep-alive",
+        "Referer":                   "https://www.nseindia.com/",
+        "Host":                      "www.nseindia.com",
+        "Sec-Fetch-Dest":            "document",
+        "Sec-Fetch-Mode":            "navigate",
+        "Sec-Fetch-Site":            "none",
+        "Sec-Fetch-User":            "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "Priority":                  "u=0, i",
     }
 
     last_error = None
@@ -79,4 +85,53 @@ def nse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
 
     raise RuntimeError(
         f"NSE API unreachable after {retries} attempts: {last_error}"
+    )
+
+
+def bse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
+    """
+    Hardened BSE API fetch with session cookie + retry/backoff.
+    Mirrors nse_get() exactly — same session cookie pattern, same retry logic.
+    Used by: universe_updater.
+
+    Raises RuntimeError after all retries exhausted.
+    """
+    headers = {
+        "User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0",
+        "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language":           "en-US,en;q=0.9",
+        "Accept-Encoding":           "gzip, deflate, br, zstd",
+        "Connection":                "keep-alive",
+        "Referer":                   "https://www.bseindia.com/",
+        "Host":                      "www.bseindia.com",
+        "Sec-Fetch-Dest":            "document",
+        "Sec-Fetch-Mode":            "navigate",
+        "Sec-Fetch-Site":            "none",
+        "Sec-Fetch-User":            "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "Priority":                  "u=0, i",
+    }
+
+    last_error = None
+    for attempt in range(1, retries + 1):
+        try:
+            session = requests.Session()
+            # BSE requires homepage cookie before API calls — same as NSE
+            session.get("https://www.bseindia.com", headers=headers, timeout=10)
+            time.sleep(1)
+            response = session.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            last_error = e
+            wait = backoff * attempt
+            logger.warning(
+                f"BSE request failed (attempt {attempt}/{retries}): {e} "
+                f"— retrying in {wait}s"
+            )
+            if attempt < retries:
+                time.sleep(wait)
+
+    raise RuntimeError(
+        f"BSE API unreachable after {retries} attempts: {last_error}"
     )

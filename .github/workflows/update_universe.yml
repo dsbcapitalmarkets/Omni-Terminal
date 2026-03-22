@@ -1,0 +1,34 @@
+name: Universe Updater
+
+on:
+  workflow_dispatch:   # manual trigger for first run / testing
+  schedule:
+    - cron: "30 1 * * 6"   # Saturday 7:00 AM IST (01:30 UTC)
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run universe updater
+        env:
+          GOOGLE_DRIVE_CRED:      ${{ secrets.GOOGLE_DRIVE_CRED }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+        run: python -m modules.universe_updater

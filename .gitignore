@@ -12,3 +12,5 @@ fii_dii_trend.png
 .streamlit/secrets.toml
 secrets.toml
 data/
+!data/BSE_500.csv
+!data/NSE_Listed.csv
