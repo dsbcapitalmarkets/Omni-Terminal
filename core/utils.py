@@ -97,7 +97,7 @@ def bse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
                            "Chrome/120.0.0.0 Safari/537.36",
         "Accept":          "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9",
-        "Referer":         "https://www.bseindia.com/",
+        "Referer":         "https://www.bseindices.com/",
         "Connection":      "keep-alive",
     }
 
