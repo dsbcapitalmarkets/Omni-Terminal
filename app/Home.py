@@ -154,9 +154,10 @@ with r2c2:
     screener = all_data.get("Stock Screener")
     st.markdown("#### 📊 Stock Screener")
     if screener and screener.get("status") == "ok":
-        c1, c2 = st.columns(2)
-        c1.metric("Universe",      screener.get("total_universe", "—"))
-        c2.metric("Passed filter", screener.get("passed_count",   "—"))
+        c1, c2, c3 = st.columns(3)
+        c1.metric("NSE",           screener.get("nse_universe",   "—"))
+        c2.metric("BSE",           screener.get("bse_universe",   "—"))
+        c3.metric("Passed filter", screener.get("passed_count",   "—"))
         stocks = screener.get("stocks", [])
         if stocks:
             df = pd.DataFrame(stocks)[["symbol", "score"]]
