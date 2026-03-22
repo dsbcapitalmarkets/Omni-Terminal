@@ -393,19 +393,17 @@ def format_message(
     msg = f"📊 <b>Stock Screener</b> ({ts})\n\n"
 
     for i, row in enumerate(ranked_df.head(20).itertuples(), 1):
-        exchange = getattr(row, "exchange", "NSE")
+        exchange     = getattr(row, "exchange", "NSE")
         yahoo_ticker = f"{row.symbol}.BO" if exchange == "BSE" else f"{row.symbol}.NS"
-        display_name = company_map.get(yahoo_ticker, row.symbol)
 
         if exchange == "NSE":
-            url = f"https://www.screener.in/company/{row.symbol}/"
+            display_name = row.symbol
+            url          = f"https://www.screener.in/company/{row.symbol}/"
         else:
-            company = company_map.get(yahoo_ticker, "")
-            if company:
-                slug = _company_to_slug(company)
-                url  = f"https://www.screener.in/company/{slug}/"
-            else:
-                url = f"https://www.screener.in/company/{row.symbol}/"
+            company      = company_map.get(yahoo_ticker, "")
+            display_name = company if company else row.symbol
+            slug         = _company_to_slug(company) if company else row.symbol
+            url          = f"https://www.screener.in/company/{slug}/"
 
         msg += f"{i}. ✅ <a href='{url}'>{display_name}</a>\n"
 
