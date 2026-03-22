@@ -107,8 +107,8 @@ def bse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
             session = requests.Session()
             # BSE requires homepage cookie before API calls — same as NSE
             session.get("https://www.bseindices.com", headers=headers, timeout=10)
-            time.sleep(1)
-            response = session.get(url, headers=headers, timeout=15)
+            time.sleep(2)
+            response = session.get(url, headers=headers, timeout=30)
             response.raise_for_status()
             return response.json()
         except Exception as e:
