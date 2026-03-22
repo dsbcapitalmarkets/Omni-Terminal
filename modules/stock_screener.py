@@ -9,6 +9,7 @@ Dependencies: yfinance, pandas, ta
 """
 
 import logging
+import time
 import pandas as pd
 from ta.momentum import RSIIndicator
 from config import SCREENER
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────────
 MIN_ABS_VOLUME = 50_000
+BATCH_SIZE     = 500   # safe yfinance batch size — avoids rate limits/timeouts
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -47,6 +49,53 @@ def _extract_symbol_df(data: pd.DataFrame, yahoo_symbol: str) -> pd.DataFrame:
         if expected.issubset(set(data.columns)):
             return data.dropna(how="all").copy()
         return pd.DataFrame()
+
+
+def _batch_fetch(yahoo_symbols: list[str], period: str = "1y") -> pd.DataFrame:
+    """
+    Download OHLCV for a large universe in batches to avoid yfinance
+    rate limits and connection timeouts.
+
+    Splits yahoo_symbols into chunks of BATCH_SIZE (500), downloads each
+    chunk separately with a 2s pause between batches, then concatenates
+    all results into a single DataFrame.
+
+    Returns empty DataFrame if all batches fail.
+    """
+    batches = [
+        yahoo_symbols[i: i + BATCH_SIZE]
+        for i in range(0, len(yahoo_symbols), BATCH_SIZE)
+    ]
+    frames = []
+
+    for idx, batch in enumerate(batches, 1):
+        logger.info(
+            f"Downloading batch {idx}/{len(batches)} "
+            f"({len(batch)} symbols)..."
+        )
+        try:
+            df = fetch_ohlc(batch, period=period, interval="1d")
+            if not df.empty:
+                frames.append(df)
+        except Exception as e:
+            logger.warning(f"Batch {idx} failed: {e}")
+
+        # Pause between batches — avoids hammering yfinance
+        if idx < len(batches):
+            time.sleep(2)
+
+    if not frames:
+        return pd.DataFrame()
+
+    if len(frames) == 1:
+        return frames[0]
+
+    # Concatenate all batch results along columns axis
+    try:
+        return pd.concat(frames, axis=1)
+    except Exception as e:
+        logger.error(f"Failed to concatenate batch results: {e}")
+        return frames[0]  # return first batch rather than nothing
 
 
 # ── Step 1: Build Universe ───────────────────────────────────────────────────
@@ -164,7 +213,8 @@ def get_universe() -> tuple[list[tuple[str, str]], int, int, dict[str, str]]:
         for sym, yt, _ in nse_universe + bse_universe
     ]
 
-    # Build company_map from the full tuples before stripping company field
+    # Build company_map before stripping company field
+    # yahoo_ticker → company name, used only in format_message()
     company_map = {
         yt: company
         for _, yt, company in nse_universe + bse_universe
@@ -327,7 +377,6 @@ def _company_to_slug(company: str) -> str:
     slug = slug.replace(",", "")
     slug = slug.replace("(", "")
     slug = slug.replace(")", "")
-    # Remove double hyphens that may result from replacements
     while "--" in slug:
         slug = slug.replace("--", "-")
     return slug.strip("-")
@@ -341,33 +390,26 @@ def format_message(
     if ranked_df.empty:
         return f"📊 <b>Stock Screener</b> ({ts})\n\nNo signals today."
 
-    msg     = f"📊 <b>Stock Screener</b> ({ts})\n\n"
-    has_bse = False
+    msg = f"📊 <b>Stock Screener</b> ({ts})\n\n"
 
     for i, row in enumerate(ranked_df.head(20).itertuples(), 1):
         exchange = getattr(row, "exchange", "NSE")
-        badge    = "" if exchange == "NSE" else " 🅱️"
+        yahoo_ticker = f"{row.symbol}.BO" if exchange == "BSE" else f"{row.symbol}.NS"
+        display_name = company_map.get(yahoo_ticker, row.symbol)
 
         if exchange == "NSE":
             url = f"https://www.screener.in/company/{row.symbol}/"
         else:
-            # Use company name slug for screener.in BSE lookup
-            yahoo_ticker = f"{row.symbol}.BO"
-            company      = company_map.get(yahoo_ticker, "")
+            company = company_map.get(yahoo_ticker, "")
             if company:
                 slug = _company_to_slug(company)
                 url  = f"https://www.screener.in/company/{slug}/"
             else:
-                # Fallback — scrip code won't work on screener.in but
-                # better than a broken link
                 url = f"https://www.screener.in/company/{row.symbol}/"
-            has_bse = True
 
-        msg += f"{i}. ✅ <a href='{url}'>{row.symbol}</a>{badge}\n"
+        msg += f"{i}. ✅ <a href='{url}'>{display_name}</a>\n"
 
     msg += "\n💡 EMA/SMA trend + volume filters."
-    if has_bse:
-        msg += "\n🅱️ = BSE listing"
     return msg
 
 
@@ -387,8 +429,9 @@ def run() -> dict:
 
         yahoo_symbols = [yt for _, yt in universe]
 
-        # 2. Batch OHLCV download — single yfinance call
-        data = fetch_ohlc(yahoo_symbols, period="1y", interval="1d")
+        # 2. Batched OHLCV download — splits universe into chunks of 500
+        #    to avoid yfinance rate limits and connection timeouts
+        data = _batch_fetch(yahoo_symbols, period="1y")
         if data.empty:
             raise RuntimeError("yfinance returned empty DataFrame for the universe.")
 
@@ -414,7 +457,6 @@ def run() -> dict:
         }
 
         save("screener.json", result)
-        # Pass company_map to format_message for BSE screener.in slugs
         send_message(format_message(ranked_df, ts, company_map), parse_mode="HTML")
 
         print(
