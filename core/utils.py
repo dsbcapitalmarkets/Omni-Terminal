@@ -48,19 +48,13 @@ def nse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
     Raises RuntimeError after all retries exhausted.
     """
     headers = {
-        "User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0",
-        "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language":           "en-US,en;q=0.9",
-        "Accept-Encoding":           "gzip, deflate, br, zstd",
-        "Connection":                "keep-alive",
-        "Referer":                   "https://www.nseindia.com/",
-        "Host":                      "www.nseindia.com",
-        "Sec-Fetch-Dest":            "document",
-        "Sec-Fetch-Mode":            "navigate",
-        "Sec-Fetch-Site":            "none",
-        "Sec-Fetch-User":            "?1",
-        "Upgrade-Insecure-Requests": "1",
-        "Priority":                  "u=0, i",
+        "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/120.0.0.0 Safari/537.36",
+        "Accept":          "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer":         "https://www.nseindia.com/",
+        "Connection":      "keep-alive",
     }
 
     last_error = None
@@ -69,7 +63,7 @@ def nse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
             session = requests.Session()
             # NSE requires homepage cookie before API calls
             session.get("https://www.nseindia.com", headers=headers, timeout=10)
-            time.sleep(1)   # small pause after cookie fetch
+            time.sleep(1)
             response = session.get(url, headers=headers, timeout=15)
             response.raise_for_status()
             return response.json()
@@ -91,25 +85,20 @@ def nse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
 def bse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
     """
     Hardened BSE API fetch with session cookie + retry/backoff.
-    Mirrors nse_get() exactly — same session cookie pattern, same retry logic.
+    Mirrors nse_get() exactly — same Chrome/JSON headers, same session
+    cookie pattern, same retry logic.
     Used by: universe_updater.
 
     Raises RuntimeError after all retries exhausted.
     """
     headers = {
-        "User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0",
-        "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language":           "en-US,en;q=0.9",
-        "Accept-Encoding":           "gzip, deflate, br, zstd",
-        "Connection":                "keep-alive",
-        "Referer":                   "https://www.bseindia.com/",
-        "Host":                      "www.bseindia.com",
-        "Sec-Fetch-Dest":            "document",
-        "Sec-Fetch-Mode":            "navigate",
-        "Sec-Fetch-Site":            "none",
-        "Sec-Fetch-User":            "?1",
-        "Upgrade-Insecure-Requests": "1",
-        "Priority":                  "u=0, i",
+        "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/120.0.0.0 Safari/537.36",
+        "Accept":          "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer":         "https://www.bseindia.com/",
+        "Connection":      "keep-alive",
     }
 
     last_error = None
@@ -117,7 +106,7 @@ def bse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
         try:
             session = requests.Session()
             # BSE requires homepage cookie before API calls — same as NSE
-            session.get("https://www.bseindia.com", headers=headers, timeout=10)
+            session.get("https://www.bseindices.com", headers=headers, timeout=10)
             time.sleep(1)
             response = session.get(url, headers=headers, timeout=15)
             response.raise_for_status()
