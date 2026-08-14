@@ -29,62 +29,36 @@ BSE_URL = "https://www.bseindices.com/AsiaIndexAPI/api/Codewise_Indices/w?code=8
 # ── NSE ───────────────────────────────────────────────────────────────────────
 
 def fetch_nse_symbols() -> tuple[list[dict], dict]:
-    """
-    Fetch NIFTY Total Market constituents from NSE API.
-
-    Uses core/utils.nse_get() which handles:
-        - Correct NSE request headers
-        - Homepage cookie fetch before API call
-        - Retry + backoff (3 attempts, 5s backoff)
-
-    Filters out priority=1 (the index entry itself — not a stock).
-
-    Each saved entry contains:
-        symbol       : NSE ticker e.g. "HDFCBANK"
-        identifier   : e.g. "HDFCBANKEQN"
-        series       : e.g. "EQ"
-        company      : from meta.companyName
-        industry     : from meta.industry
-        isin         : from meta.isin
-        listing_date : from meta.listingDate
-        is_fno       : from meta.isFNOSec
-        is_etf       : from meta.isETFSec
-        is_suspended : from meta.isSuspended
-
-    Returns:
-        symbols  : list of stock dicts
-        metadata : index-level advance/decline summary
-    """
     response = nse_get(NSE_URL)
+    payload  = response.get("data", {})   # new endpoint nests everything under "data"
 
+    adu = payload.get("aduCount", {})
     metadata = {
-        "index_name": response.get("name", "NIFTY TOTAL MARKET"),
-        "timestamp":  response.get("timestamp", ""),
-        "advances":   response.get("advance", {}).get("advances", 0),
-        "declines":   response.get("advance", {}).get("declines", 0),
-        "unchanged":  response.get("advance", {}).get("unchanged", 0),
+        "index_name": "NIFTY TOTAL MARKET",       # not present in new payload — hardcoded
+        "timestamp":  payload.get("timestamp", ""),
+        "advances":   adu.get("advances", 0),
+        "declines":   adu.get("declines", 0),
+        "unchanged":  adu.get("unchange", 0),      # note: key is "unchange", not "unchanged"
     }
 
     symbols = []
-    for item in response.get("data", []):
+    for item in payload.get("data", []):
         # priority=1 is the index row itself — skip it
         if item.get("priority", 0) == 1:
             continue
-
-        meta = item.get("meta", {})
         symbols.append({
-            "symbol":       item.get("symbol",     ""),
-            "identifier":   item.get("identifier", ""),
-            "series":       item.get("series",     "EQ"),
-            "company":      meta.get("companyName", ""),
-            "industry":     meta.get("industry",    ""),
-            "isin":         meta.get("isin",        ""),
-            "listing_date": meta.get("listingDate", ""),
-            "is_fno":       meta.get("isFNOSec",    False),
-            "is_etf":       meta.get("isETFSec",    False),
-            "is_suspended": meta.get("isSuspended", False),
+            "symbol":       item.get("symbol",      ""),
+            "identifier":   item.get("identifier",  ""),
+            "series":       item.get("series",      "EQ"),
+            "company":      item.get("companyName", ""),  # top-level now, not under meta
+            # NOT available in the new NextApi payload (old endpoint had these under "meta"):
+            "industry":     "",
+            "isin":         "",
+            "listing_date": "",
+            "is_fno":       False,
+            "is_etf":       False,
+            "is_suspended": False,
         })
-
     logger.info(f"NSE: {len(symbols)} stocks fetched (priority=1 index entry excluded)")
     return symbols, metadata
 
