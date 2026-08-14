@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 NSE_URL = "https://www.nseindia.com/api/NextApi/apiClient/marketWatchApi?functionName=getIndicesData&symbol=NIFTY%20TOTAL%20MKT"
 
 # Replace with your actual BSE AllCap API endpoint
-BSE_URL = "https://www.bseindices.com/AsiaIndexAPI/api/Codewise_Indices/w?code=87"
+BSE_URL = "https://www.bseindices.com/AsiaIndexAPI/api/Codewise_Indices/w?code=197"
 
 
 # ── NSE ───────────────────────────────────────────────────────────────────────
