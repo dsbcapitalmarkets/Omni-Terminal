@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────────
 MIN_ABS_VOLUME = 50_000
-BATCH_SIZE     = 500   # safe yfinance batch size — avoids rate limits/timeouts
+BATCH_SIZE = 200   # was 500 — smaller batches = less concurrent load per request
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ def _batch_fetch(yahoo_symbols: list[str], period: str = "1y") -> pd.DataFrame:
 
         # Pause between batches — avoids hammering yfinance
         if idx < len(batches):
-            time.sleep(2)
+            time.sleep(5)   # was 2 — give Yahoo more breathing room between chunks
 
     if not frames:
         return pd.DataFrame()
