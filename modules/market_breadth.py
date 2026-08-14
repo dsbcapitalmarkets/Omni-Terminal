@@ -31,8 +31,7 @@ MAX_HISTORY = 60   # rolling window kept in breadth.json (mirrors smart_money)
 def get_nse_data() -> tuple[dict, list[str]]:
     url      = "https://www.nseindia.com/api/NextApi/apiClient/marketWatchApi?functionName=getIndicesData&symbol=NIFTY%20TOTAL%20MKT"
     response = fetch_nse(url)
-    nse_data = response["data"]
-
+    nse_data = response["data"]["data"]   # ← unwrap the extra nesting level
     symbols   = []
     advances  = declines = unchanged = 0
     new_highs = new_lows = 0
