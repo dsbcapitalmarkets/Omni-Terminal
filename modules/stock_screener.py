@@ -146,20 +146,19 @@ def get_nse_universe() -> tuple[list[tuple[str, str, str]], set[str]]:
         "Run universe_updater.py to populate."
     )
     try:
-        url      = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20TOTAL%20MARKET"
+        url      = "https://www.nseindia.com/api/NextApi/apiClient/marketWatchApi?functionName=getIndicesData&symbol=NIFTY%20TOTAL%20MKT"
         api_data = fetch_nse(url)
+        constituents = api_data["data"]["data"]  # new endpoint nests the list one level deeper
         universe = [
             (item["symbol"], f"{item['symbol']}.NS", "")
-            for item in api_data["data"]
+            for item in constituents
             if item.get("priority") != 1 and item.get("symbol")
         ]
         logger.info(f"NSE universe (API fallback): {len(universe)} symbols")
         return universe, set()
-
     except Exception as e:
         logger.error(f"NSE API fallback failed: {e}")
         return [], set()
-
 
 def get_bse_universe() -> list[tuple[str, str, str]]:
     """
