@@ -33,7 +33,6 @@ def fetch_data(tickers: dict, period: str = "6mo", interval: str = "1d") -> pd.D
     raw     = fetch_ohlc(symbols, period=period, interval=interval)
     if raw.empty:
         raise ValueError("No sector data fetched.")
-
     data = {}
     for name, symbol in zip(names, symbols):
         try:
@@ -42,13 +41,14 @@ def fetch_data(tickers: dict, period: str = "6mo", interval: str = "1d") -> pd.D
             data[name] = close
         except Exception as e:
             logger.warning(f"Skipped {name}: {e}")
-
     if not data:
         raise ValueError("No valid sector data after processing.")
-
     df_final = pd.concat(data.values(), axis=1)
     df_final.columns = list(data.keys())
-    return df_final.dropna()
+    # Forward-fill small gaps (e.g. one illiquid day) before dropping rows —
+    # avoids one gappy sector collapsing the whole aligned window
+    df_final = df_final.ffill(limit=3).dropna()
+    return df_final
 
 # =========================
 # Analyze (your original logic)
@@ -92,9 +92,14 @@ def analyze_sector_rotation(df: pd.DataFrame, run_mode: str) -> tuple[pd.DataFra
             "Score":  rs + mom,
         })
 
-    df_out = (pd.DataFrame(results)
-              .sort_values("Score", ascending=False)
-              .reset_index(drop=True))
+    df_out_raw = pd.DataFrame(results)
+    if df_out_raw.empty:
+        raise ValueError(
+            f"No sectors had sufficient history for rs_lb={rs_lb}/mom_lb={mom_lb} "
+            f"— combined df had only {len(df)} rows after dropna(). "
+            f"Check for a sector ETF with data gaps."
+        )
+    df_out = df_out_raw.sort_values("Score", ascending=False).reset_index(drop=True)
     return df_out, title_suffix
 
 # =========================
