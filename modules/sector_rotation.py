@@ -8,8 +8,18 @@ from core.fetcher import fetch_ohlc
 from core.db import save, load
 from core.notifier import send_message
 from core.utils import timestamp_str
+import tempfile, os, shutil
 
 logger = logging.getLogger(__name__)
+
+tz_dir = os.path.join(tempfile.gettempdir(), f"yfinance_cache_{os.getpid()}")
+try:
+    if os.path.exists(tz_dir) and not os.path.isdir(tz_dir):
+        shutil.move(tz_dir, tz_dir + "_bak")
+    os.makedirs(tz_dir, exist_ok=True)
+    yf.set_tz_cache_location(tz_dir)
+except Exception:
+    pass
 
 # =========================
 # Config
