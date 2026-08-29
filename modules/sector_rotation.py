@@ -37,79 +37,213 @@ def get_run_mode() -> str:
 # =========================
 # Fetch (your original logic)
 # =========================
-def fetch_data(tickers: dict, period: str = "6mo", interval: str = "1d") -> pd.DataFrame:
+# =========================
+# Fetch
+# =========================
+def fetch_data(
+    tickers: dict,
+    period: str = "6mo",
+    interval: str = "1d"
+) -> pd.DataFrame:
+
     symbols = list(tickers.values())
     names   = list(tickers.keys())
-    raw     = fetch_ohlc(symbols, period=period, interval=interval)
+
+    raw = fetch_ohlc(
+        symbols,
+        period=period,
+        interval=interval
+    )
+
     if raw.empty:
         raise ValueError("No sector data fetched.")
+
     data = {}
+
     for name, symbol in zip(names, symbols):
         try:
             close = normalize_ohlc(raw[symbol])["Close"]
+            close = close.sort_index()
             close.name = name
+
+            # Remove duplicate timestamps if any
+            close = close[~close.index.duplicated(keep="last")]
+
             data[name] = close
+
+            logger.info(
+                f"{name}: {len(close)} observations "
+                f"({close.index.min()} → {close.index.max()})"
+            )
+
         except Exception as e:
-            logger.warning(f"Skipped {name}: {e}")
+            logger.warning(
+                f"Skipped {name} ({symbol}): {e}"
+            )
+
     if not data:
-        raise ValueError("No valid sector data after processing.")
+        raise ValueError(
+            "No valid sector data after processing."
+        )
+
     df_final = pd.concat(data.values(), axis=1)
+
     df_final.columns = list(data.keys())
-    # Forward-fill small gaps (e.g. one illiquid day) before dropping rows —
-    # avoids one gappy sector collapsing the whole aligned window
-    df_final = df_final.ffill(limit=3).dropna()
+
+    # DO NOT globally dropna().
+    #
+    # Different ETFs can have occasional missing dates.
+    # analyze_sector_rotation() will align each sector
+    # independently with NIFTY 50.
+
     return df_final
 
 # =========================
 # Analyze (your original logic)
 # =========================
-def analyze_sector_rotation(df: pd.DataFrame, run_mode: str) -> tuple[pd.DataFrame, str]:
+# =========================
+# Analyze
+# =========================
+def analyze_sector_rotation(
+    df: pd.DataFrame,
+    run_mode: str
+) -> tuple[pd.DataFrame, str]:
+
     if run_mode == "WEEKLY":
-        rs_lb, mom_lb, title_suffix = 60, 20, "(3M / 1M)"
+        rs_lb = 60
+        mom_lb = 20
+        title_suffix = "(3M / 1M)"
     else:
-        rs_lb, mom_lb, title_suffix = 20, 5,  "(1M / 1W)"
+        rs_lb = 20
+        mom_lb = 5
+        title_suffix = "(1M / 1W)"
+
+    required_history = max(rs_lb + 1, mom_lb + 1, 4)
 
     results = []
-    benchmark = df["NIFTY 50"]
+
+    if "NIFTY 50" not in df.columns:
+        raise ValueError(
+            "NIFTY 50 benchmark data is missing."
+        )
+
+    benchmark = df["NIFTY 50"].dropna()
+
+    if len(benchmark) < required_history:
+        raise ValueError(
+            f"NIFTY 50 has insufficient history: "
+            f"{len(benchmark)} rows available, "
+            f"{required_history} required."
+        )
 
     for sector in df.columns:
+
         if sector == "NIFTY 50":
             continue
-        ratio = df[sector] / benchmark
-        if len(ratio) <= max(rs_lb, mom_lb, 3):
-            continue
 
-        rs        = ((ratio.iloc[-1] / ratio.iloc[-rs_lb - 1]) - 1) * 100
-        mom       = ((ratio.iloc[-1] / ratio.iloc[-mom_lb - 1]) - 1) * 100
-        short_mom = ((ratio.iloc[-1] / ratio.iloc[-3]) - 1) * 100
+        try:
+            # -------------------------------------------------
+            # Align ONLY this sector with NIFTY 50
+            # -------------------------------------------------
+            pair = pd.concat(
+                [
+                    df[sector].rename("sector"),
+                    benchmark.rename("benchmark")
+                ],
+                axis=1
+            ).dropna()
 
-        if rs < 0 and mom > 0.3 and short_mom > 0.2:
-            signal = "Emerging ⚡"
-        elif rs > 2 and mom > 1:
-            signal = "Strong Uptrend 🚀"
-        elif rs > 0 and mom > 0:
-            signal = "Moderate Uptrend 📈"
-        elif rs < -2 and mom < -1:
-            signal = "Strong Downtrend 🔻"
-        else:
-            signal = "Neutral ⚖️"
+            if len(pair) < required_history:
+                logger.warning(
+                    f"Skipping {sector}: "
+                    f"only {len(pair)} aligned observations; "
+                    f"{required_history} required."
+                )
+                continue
 
-        results.append({
-            "Sector": sector,
-            "RS":     round(rs, 2),
-            "MOM":    round(mom, 2),
-            "Signal": signal,
-            "Score":  rs + mom,
-        })
+            # -------------------------------------------------
+            # Relative Strength Ratio
+            # -------------------------------------------------
+            ratio = pair["sector"] / pair["benchmark"]
 
+            # -------------------------------------------------
+            # Relative Strength
+            # -------------------------------------------------
+            rs = (
+                (ratio.iloc[-1] / ratio.iloc[-rs_lb - 1]) - 1
+            ) * 100
+
+            # -------------------------------------------------
+            # Momentum
+            # -------------------------------------------------
+            mom = (
+                (ratio.iloc[-1] / ratio.iloc[-mom_lb - 1]) - 1
+            ) * 100
+
+            # -------------------------------------------------
+            # Short-term momentum
+            # -------------------------------------------------
+            short_mom = (
+                (ratio.iloc[-1] / ratio.iloc[-4]) - 1
+            ) * 100
+
+            # -------------------------------------------------
+            # Signal classification
+            # -------------------------------------------------
+            if rs < 0 and mom > 0.3 and short_mom > 0.2:
+
+                signal = "Emerging ⚡"
+
+            elif rs > 2 and mom > 1:
+
+                signal = "Strong Uptrend 🚀"
+
+            elif rs > 0 and mom > 0:
+
+                signal = "Moderate Uptrend 📈"
+
+            elif rs < -2 and mom < -1:
+
+                signal = "Strong Downtrend 🔻"
+
+            else:
+
+                signal = "Neutral ⚖️"
+
+            results.append({
+                "Sector": sector,
+                "RS": round(rs, 2),
+                "MOM": round(mom, 2),
+                "Signal": signal,
+                "Score": rs + mom,
+            })
+
+        except Exception as e:
+
+            logger.warning(
+                f"Failed calculating {sector}: {e}"
+            )
+
+    # ---------------------------------------------------------
+    # Validate results
+    # ---------------------------------------------------------
     df_out_raw = pd.DataFrame(results)
+
     if df_out_raw.empty:
         raise ValueError(
-            f"No sectors had sufficient history for rs_lb={rs_lb}/mom_lb={mom_lb} "
-            f"— combined df had only {len(df)} rows after dropna(). "
-            f"Check for a sector ETF with data gaps."
+            f"No sectors had sufficient history for "
+            f"rs_lb={rs_lb}/mom_lb={mom_lb}. "
+            f"Benchmark rows={len(benchmark)}, "
+            f"required={required_history}. "
+            f"Check sector ETF data availability."
         )
-    df_out = df_out_raw.sort_values("Score", ascending=False).reset_index(drop=True)
+
+    df_out = (
+        df_out_raw
+        .sort_values("Score", ascending=False)
+        .reset_index(drop=True)
+    )
+
     return df_out, title_suffix
 
 # =========================
