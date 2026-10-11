@@ -34,11 +34,141 @@ def fmt_pct(x, plus: bool = False) -> str:
         return "N/A"
     return f"{x:+.2f}%" if plus else f"{x:.2f}%"
 
-def normalize_ohlc(df: pd.DataFrame) -> pd.DataFrame:
-    """Flatten yfinance MultiIndex columns if present."""
+def normalize_ohlc(
+    df: pd.DataFrame,
+    ticker: str | None = None,
+) -> pd.DataFrame:
+    """
+    Normalize yfinance OHLC data.
+
+    Supports:
+    - Flat OHLC columns.
+    - MultiIndex columns in either Price/Ticker or Ticker/Price order.
+    - Optional ticker selection.
+    - Missing OHLC fields without unnecessarily dropping valid Close data.
+
+    Returns a DataFrame with conventional OHLCV column names.
+    """
+
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    df = df.copy()
+
     if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    return df.dropna()
+
+        price_fields = {
+            "Open",
+            "High",
+            "Low",
+            "Close",
+            "Adj Close",
+            "Volume",
+        }
+
+        selected_level = None
+
+        # Find the column level containing OHLC field names.
+        for level in range(df.columns.nlevels):
+
+            values = set(df.columns.get_level_values(level))
+
+            if values.intersection(price_fields):
+                selected_level = level
+                break
+
+        if selected_level is None:
+            raise ValueError(
+                "Unable to identify OHLC columns in MultiIndex response: "
+                f"{df.columns.tolist()}"
+            )
+
+        # If a ticker is specified, select its columns first.
+        if ticker is not None:
+
+            ticker_levels = [
+                level
+                for level in range(df.columns.nlevels)
+                if ticker in df.columns.get_level_values(level)
+            ]
+
+            if ticker_levels:
+
+                ticker_level = ticker_levels[0]
+
+                df = df.xs(
+                    ticker,
+                    axis=1,
+                    level=ticker_level,
+                    drop_level=True,
+                )
+
+                if isinstance(df.columns, pd.MultiIndex):
+
+                    remaining_level = next(
+                        (
+                            level
+                            for level in range(df.columns.nlevels)
+                            if set(
+                                df.columns.get_level_values(level)
+                            ).intersection(price_fields)
+                        ),
+                        None,
+                    )
+
+                    if remaining_level is None:
+                        raise ValueError(
+                            f"OHLC columns missing for ticker {ticker}"
+                        )
+
+                    df.columns = df.columns.get_level_values(
+                        remaining_level
+                    )
+
+                else:
+                    df.columns = df.columns.astype(str)
+
+            else:
+                raise ValueError(
+                    f"Ticker {ticker} not found in columns"
+                )
+
+        else:
+
+            df.columns = df.columns.get_level_values(
+                selected_level
+            )
+
+    df.columns = df.columns.astype(str)
+
+    # Keep the conventional OHLCV fields that are actually available.
+    expected_fields = [
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Adj Close",
+        "Volume",
+    ]
+
+    available_fields = [
+        field for field in expected_fields
+        if field in df.columns
+    ]
+
+    df = df.loc[:, available_fields]
+
+    if df.columns.duplicated().any():
+        raise ValueError(
+            "Duplicate OHLC column names after normalization: "
+            f"{df.columns.tolist()}"
+        )
+
+    # A valid Close is the essential requirement for price analysis.
+    if "Close" in df.columns:
+        df = df.dropna(subset=["Close"])
+
+    return df.sort_index()
 
 def nse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
     """
