@@ -36,6 +36,28 @@ def _download_single(
         auto_adjust=True,
     )
 
+    
+    # Diagnostic logs: inspect raw Yahoo Finance response
+    logger.info(
+        "RAW DOWNLOAD %s: shape=%s, columns=%s",
+        ticker,
+        df.shape,
+        df.columns.tolist(),
+    )
+
+    logger.info(
+        "RAW DOWNLOAD %s: date range=%s to %s",
+        ticker,
+        df.index.min() if not df.empty else None,
+        df.index.max() if not df.empty else None,
+    )
+
+    logger.info(
+        "RAW DOWNLOAD %s: last 5 rows:\n%s",
+        ticker,
+        df.tail(5).to_string(),
+    )
+
     if df.empty:
         raise ValueError(
             f"yfinance returned empty data for {ticker}"
@@ -246,58 +268,43 @@ def fetch_ohlc(
 
             failed_tickers.append(ticker)
 
+    
     # ---------------------------------------------------------
-    # INDIVIDUAL RECOVERY
+    # INDIVIDUAL RECOVERY — ONE ATTEMPT PER FAILED TICKER
     # ---------------------------------------------------------
     for ticker in failed_tickers:
+        try:
+            logger.info(
+                "Attempting individual recovery for %s (1 attempt only)",
+                ticker,
+            )
 
-        recovered = False
+            ticker_df = _download_single(
+                ticker,
+                period,
+                interval,
+            )
 
-        for attempt in range(1, retries + 1):
-            try:
+            logger.info(
+                "%s: individual download returned %s observations",
+                ticker,
+                len(ticker_df),
+            )
 
-                logger.info(
-                    "Retrying %s individually (%s/%s)",
-                    ticker,
-                    attempt,
-                    retries,
+            if len(ticker_df) < min_expected_rows:
+                raise ValueError(
+                    f"Only {len(ticker_df)} observations returned"
                 )
 
-                ticker_df = _download_single(
-                    ticker,
-                    period,
-                    interval,
-                )
+            valid_data[ticker] = ticker_df
 
-                logger.info(
-                    "%s: individual download returned %s observations",
-                    ticker,
-                    len(ticker_df),
-                )
+        except Exception as exc:
+            logger.warning(
+                "%s: individual recovery failed (no further retries): %s",
+                ticker,
+                exc,
+            )
 
-                if len(ticker_df) < min_expected_rows:
-                    raise ValueError(
-                        f"Only {len(ticker_df)} observations returned"
-                    )
-
-                valid_data[ticker] = ticker_df
-                recovered = True
-                break
-
-            except Exception as exc:
-
-                logger.warning(
-                    "%s: individual retry %s/%s failed: %s",
-                    ticker,
-                    attempt,
-                    retries,
-                    exc,
-                )
-
-                if attempt < retries:
-                    time.sleep(backoff * attempt)
-
-        if not recovered:
             logger.error(
                 "%s: historical data recovery failed",
                 ticker,
