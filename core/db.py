@@ -9,6 +9,9 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
+from dotenv import load_dotenv
+load_dotenv()
+
 logger = logging.getLogger(__name__)
 
 DATA_DIR     = Path(__file__).resolve().parent.parent / "data"
@@ -106,38 +109,52 @@ def save(filename: str, payload: dict | list) -> None:
 
 def load(filename: str, default=None):
     """
-    Read JSON from Google Drive. Falls back to local data/ folder.
-    Use this in GitHub Actions modules — never cached.
+    Load JSON from Google Drive.
+
+    Falls back to the local data/ folder if Drive is unavailable
+    or the requested file does not exist in Drive.
     """
     try:
-        service   = _get_drive_service()
+        service = _get_drive_service()
         folder_id = _get_folder_id()
-        file_id   = _find_file_id(service, filename, folder_id)
+        file_id = _find_file_id(service, filename, folder_id)
 
-        if not file_id:
-            logger.warning(f"Drive: {filename} not found.")
-            return default
+        if file_id:
+            request = service.files().get_media(fileId=file_id)
+            buffer = io.BytesIO()
+            downloader = MediaIoBaseDownload(buffer, request)
 
-        request    = service.files().get_media(fileId=file_id)
-        buffer     = io.BytesIO()
-        downloader = MediaIoBaseDownload(buffer, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-        buffer.seek(0)
-        return json.load(buffer)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+
+            buffer.seek(0)
+            return json.load(buffer)
+
+        logger.warning(
+            f"Drive: {filename} not found. Checking local fallback."
+        )
 
     except Exception as e:
-        logger.warning(f"Drive load failed for {filename}, trying local: {e}")
+        logger.warning(
+            f"Drive load failed for {filename}, "
+            f"trying local fallback: {e}"
+        )
 
     local_path = DATA_DIR / filename
+
     if local_path.exists():
         try:
-            with open(local_path) as f:
+            with open(local_path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except (json.JSONDecodeError, OSError):
-            return default
+
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error(
+                f"Local load failed for {filename}: {e}"
+            )
+
     return default
+
 
 def last_updated(filename: str) -> str | None:
     """Return last modified time of the file from Drive."""
