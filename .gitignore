@@ -10,3 +10,6 @@ venv/
 .streamlit/secrets.toml
 secrets.toml
 data/
+run_local.py
+run_local_frontend.py
+misc/

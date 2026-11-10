@@ -34,11 +34,36 @@ def fmt_pct(x, plus: bool = False) -> str:
         return "N/A"
     return f"{x:+.2f}%" if plus else f"{x:.2f}%"
 
+
 def normalize_ohlc(df: pd.DataFrame) -> pd.DataFrame:
-    """Flatten yfinance MultiIndex columns if present."""
+    """
+    Normalize yfinance OHLC data.
+
+    - Flatten MultiIndex columns when present.
+    - Remove rows with missing essential price values.
+    - Do not discard valid price rows due to missing Volume
+      or other non-essential fields.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame() if df is None else df.copy()
+
+    df = df.copy()
+
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
-    return df.dropna()
+
+    required_columns = [
+        col for col in ("Open", "High", "Low", "Close")
+        if col in df.columns
+    ]
+
+    if required_columns:
+        df = df.dropna(subset=required_columns)
+    else:
+        df = df.dropna(how="all")
+
+    return df
+
 
 def nse_get(url: str, retries: int = 3, backoff: float = 5.0) -> dict:
     """

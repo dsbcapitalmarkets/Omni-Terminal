@@ -42,9 +42,9 @@ const navigation = [
 
 function App() {
   return (
-    <BrowserRouter>
-      <Terminal />
-    </BrowserRouter>
+  <BrowserRouter basename={import.meta.env.BASE_URL}>
+    <Terminal />
+  </BrowserRouter>
   );
 }
 
