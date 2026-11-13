@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 MIN_ABS_VOLUME = 50_000
 BATCH_SIZE = 200   # was 500 — smaller batches = less concurrent load per request
 
+# ============================================================
+# SCREENER CONFIGURATION
+# ============================================================
+
+EXCHANGE = "NSE"  # Options: "NSE", "BSE", "BOTH"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -189,44 +194,61 @@ def get_bse_universe() -> list[tuple[str, str, str]]:
     return universe
 
 
+
 def get_universe() -> tuple[list[tuple[str, str]], int, int, dict[str, str]]:
-    """
-    Combine NSE EQ + BSE into the full screening universe.
+    exchange = EXCHANGE.upper()
 
-    Also builds company_map — a yahoo_ticker → company name lookup dict.
-    Built here once from already-loaded Drive JSONs (milliseconds, no extra
-    network call). Used only by format_message() for screener.in URL slugs.
+    if exchange not in ("NSE", "BSE", "BOTH"):
+        raise ValueError(f"Invalid exchange selection: {EXCHANGE}")
 
-    Returns:
-        universe    : list of (display_symbol, yahoo_ticker)
-        nse_count   : number of NSE stocks
-        bse_count   : number of BSE stocks
-        company_map : dict of {yahoo_ticker: company_name}
-    """
-    nse_universe, nse_isins = get_nse_universe()
-    bse_universe             = get_bse_universe()
+    nse_universe = []
+    bse_universe = []
 
-    # Combine into (symbol, yahoo_ticker) tuples for downstream functions
+    if exchange in ("NSE", "BOTH"):
+        nse_universe, _ = get_nse_universe()
+
+    if exchange in ("BSE", "BOTH"):
+        bse_universe = get_bse_universe()
+
+    def deduplicate(rows):
+        unique = []
+        seen = set()
+
+        for sym, yahoo_ticker, company in rows:
+            key = yahoo_ticker.upper()
+
+            if key not in seen:
+                seen.add(key)
+                unique.append((sym, yahoo_ticker, company))
+
+        return unique
+
+    nse_universe = deduplicate(nse_universe)
+    bse_universe = deduplicate(bse_universe)
+
+    combined = nse_universe + bse_universe
+
     universe = [
-        (sym, yt)
-        for sym, yt, _ in nse_universe + bse_universe
+        (sym, yahoo_ticker)
+        for sym, yahoo_ticker, _ in combined
     ]
 
-    # Build company_map before stripping company field
-    # yahoo_ticker → company name, used only in format_message()
     company_map = {
-        yt: company
-        for _, yt, company in nse_universe + bse_universe
+        yahoo_ticker: company
+        for _, yahoo_ticker, company in combined
     }
 
     nse_count = len(nse_universe)
     bse_count = len(bse_universe)
 
     logger.info(
-        f"Total universe: {len(universe)} stocks "
+        f"Exchange: {exchange} | "
+        f"Total universe: {len(universe)} "
         f"({nse_count} NSE + {bse_count} BSE)"
     )
+
     return universe, nse_count, bse_count, company_map
+
 
 
 # ── Step 2: Compute Indicators ───────────────────────────────────────────────
@@ -412,65 +434,124 @@ def format_message(
 
 # ── run() ────────────────────────────────────────────────────────────────────
 
+
 def run() -> dict:
     ts = timestamp_str()
+
     try:
-        # 1. Build universe from Drive JSONs + company_map
+        # 1. Build combined universe
         universe, nse_count, bse_count, company_map = get_universe()
 
         if not universe:
             raise RuntimeError(
-                "Universe is empty. Run universe_updater.py first to "
-                "populate nse_symbols.json and bse_symbols.json on Drive."
+                "Universe is empty. Run universe_updater.py first."
             )
 
         yahoo_symbols = [yt for _, yt in universe]
 
-        # 2. Batched OHLCV download — splits universe into chunks of 500
-        #    to avoid yfinance rate limits and connection timeouts
+        # 2. Download OHLCV
         data = _batch_fetch(yahoo_symbols, period="1y")
+
         if data.empty:
-            raise RuntimeError("yfinance returned empty DataFrame for the universe.")
+            raise RuntimeError(
+                "yfinance returned empty DataFrame for the universe."
+            )
 
-        # 3. Compute indicators in one pass
+        # 3. Compute indicators
         indicators = compute_indicators(universe, data)
-        logger.info(f"Indicators computed for {len(indicators)} symbols")
 
-        # 4. Apply hard filter
+        logger.info(
+            f"Indicators computed for {len(indicators)} symbols"
+        )
+
+        # 4. Apply filters
         passed = apply_filter(indicators)
 
-        # 5. Score and rank
-        ranked_df   = score_and_rank(passed, indicators)
+        # 5. Calculate exchange-specific coverage
+        nse_data_count = sum(
+            1 for ind in indicators.values()
+            if ind["exchange"] == "NSE"
+        )
+
+        bse_data_count = sum(
+            1 for ind in indicators.values()
+            if ind["exchange"] == "BSE"
+        )
+
+        nse_passed_count = sum(
+            1 for symbol in passed
+            if indicators[symbol]["exchange"] == "NSE"
+        )
+
+        bse_passed_count = sum(
+            1 for symbol in passed
+            if indicators[symbol]["exchange"] == "BSE"
+        )
+
+        # 6. Score and rank
+        ranked_df = score_and_rank(passed, indicators)
+
         stocks_list = ranked_df.to_dict(orient="records")
 
+        # 7. Build result
         result = {
-            "timestamp":      ts,
-            "status":         "ok",
+            "timestamp": ts,
+            "status": "ok",
+
+            # Universe
             "total_universe": len(universe),
-            "nse_universe":   nse_count,
-            "bse_universe":   bse_count,
-            "passed_count":   len(passed),
-            "stocks":         stocks_list,
+            "nse_universe": nse_count,
+            "bse_universe": bse_count,
+
+            # Data coverage
+            "total_data_received": len(indicators),
+            "nse_data_received": nse_data_count,
+            "bse_data_received": bse_data_count,
+
+            # Qualifying stocks
+            "passed_count": len(passed),
+            "nse_passed_count": nse_passed_count,
+            "bse_passed_count": bse_passed_count,
+
+            # Results
+            "stocks": stocks_list,
         }
 
+        # 8. Save to Google Drive
         save("screener.json", result)
-        send_message(format_message(ranked_df, ts, company_map), parse_mode="HTML")
+
+        # 9. Telegram notification
+        send_message(
+            format_message(ranked_df, ts, company_map),
+            parse_mode="HTML",
+        )
 
         print(
             f"Screener done — {len(passed)}/{len(universe)} passed "
-            f"({nse_count} NSE + {bse_count} BSE universe)."
+            f"({nse_passed_count} NSE + {bse_passed_count} BSE). "
+            f"Data received: {len(indicators)}/{len(universe)}."
         )
+
         return result
 
     except Exception as e:
         logger.error(f"Screener run() failed: {e}")
-        error_result = {"status": "error", "error": str(e), "timestamp": ts}
+
+        error_result = {
+            "status": "error",
+            "error": str(e),
+            "timestamp": ts,
+        }
+
         save("screener.json", error_result)
+
         send_message(
             f"❌ <b>Stock Screener failed</b>\n<code>{e}</code>",
             parse_mode="HTML",
         )
+
         return error_result
+
 
 
 if __name__ == "__main__":

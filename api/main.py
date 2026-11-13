@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.db import load
@@ -48,7 +49,6 @@ def load_module(module_name: str):
 
     try:
         filename = DATA_FILES[module_name]
-
         data = load(filename)
 
         if data is None:
@@ -81,8 +81,70 @@ def load_module(module_name: str):
 # ============================================================
 
 @app.get("/api/stock-screener")
-def stock_screener():
-    return load_module("Stock Screener")
+def stock_screener(
+    exchange: str = Query(
+        default="BOTH",
+        description="Exchange filter: NSE, BSE or BOTH",
+    )
+):
+    """
+    Return screener results filtered by exchange.
+
+    Examples:
+        /api/stock-screener?exchange=NSE
+        /api/stock-screener?exchange=BSE
+        /api/stock-screener?exchange=BOTH
+
+    Filtering is performed on existing screener results.
+    No additional market data download is triggered.
+    """
+
+    exchange = exchange.strip().upper()
+
+    if exchange not in ("NSE", "BSE", "BOTH"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid exchange. Choose NSE, BSE or BOTH.",
+        )
+
+    data = load_module("Stock Screener")
+
+    if not isinstance(data, dict):
+        return data
+
+    if data.get("status") != "ok":
+        return data
+
+    stocks = data.get("stocks", [])
+
+    if not isinstance(stocks, list):
+        raise HTTPException(
+            status_code=500,
+            detail="Invalid stocks data in screener.json",
+        )
+
+    # Exchange filtering
+    if exchange == "BOTH":
+        filtered_stocks = stocks
+    else:
+        filtered_stocks = [
+            stock
+            for stock in stocks
+            if stock.get("exchange", "").upper() == exchange
+        ]
+
+    # Preserve original screener metadata
+    result = data.copy()
+
+    result.update({
+        "exchange_filter": exchange,
+        "stocks": filtered_stocks,
+        "passed_count": len(filtered_stocks),
+        "filtered_count": len(filtered_stocks),
+        "total_signals": len(stocks),
+    })
+
+    return result
 
 
 # ============================================================
