@@ -41,82 +41,196 @@ def _get_folder_id() -> str:
     return _get_secret("GOOGLE_DRIVE_FOLDER_ID")
 
 def _find_file_id(service, filename: str, folder_id: str) -> str | None:
-    """Return the Drive file ID for filename inside folder, or None if not found."""
+    """Return the Drive file ID for filename inside folder, or None."""
+
+    escaped_name = filename.replace("\\", "\\\\").replace("'", "\\'")
+
     query = (
-        f"name='{filename}' "
+        f"name = '{escaped_name}' "
         f"and '{folder_id}' in parents "
-        f"and trashed=false"
+        f"and trashed = false"
     )
+
     result = service.files().list(
-        q=query, fields="files(id, name)", spaces="drive"
+        q=query,
+        fields="files(id, name)",
+        spaces="drive",
+        pageSize=100,
     ).execute()
+
     files = result.get("files", [])
     return files[0]["id"] if files else None
+
+def _find_subfolder(service, subfolder: str, parent_id: str):
+    """Find an existing Google Drive subfolder without creating it."""
+
+    query = (
+        f"name = '{subfolder}' "
+        f"and mimeType = 'application/vnd.google-apps.folder' "
+        f"and '{parent_id}' in parents "
+        f"and trashed = false"
+    )
+
+    results = service.files().list(
+        q=query,
+        spaces="drive",
+        fields="files(id, name)",
+        pageSize=1,
+    ).execute()
+
+    folders = results.get("files", [])
+
+    return folders[0]["id"] if folders else None
+
+def _find_or_create_subfolder(service, folder_name: str, parent_id: str) -> str:
+    """Find a subfolder under parent_id or create it if it does not exist."""
+
+    escaped_name = folder_name.replace("\\", "\\\\").replace("'", "\\'")
+
+    query = (
+        f"name = '{escaped_name}' "
+        f"and mimeType = 'application/vnd.google-apps.folder' "
+        f"and '{parent_id}' in parents "
+        f"and trashed = false"
+    )
+
+    response = service.files().list(
+        q=query,
+        spaces="drive",
+        fields="files(id, name)",
+        pageSize=100,
+    ).execute()
+
+    folders = response.get("files", [])
+
+    if folders:
+        return folders[0]["id"]
+
+    folder_metadata = {
+        "name": folder_name,
+        "mimeType": "application/vnd.google-apps.folder",
+        "parents": [parent_id],
+    }
+
+    folder = service.files().create(
+        body=folder_metadata,
+        fields="id",
+    ).execute()
+
+    logging.info("Created Google Drive folder: %s", folder_name)
+
+    return folder["id"]
 
 # =========================
 # Public API
 # =========================
-def save(filename: str, payload: dict | list) -> None:
+def save(filename: str, payload, subfolder: str | None = None):
     """
-    Update an existing JSON file in Google Drive.
-    File MUST already exist in the Drive folder — create it manually first.
-    Falls back to local data/ folder if Drive unavailable.
+    Save JSON data to Google Drive.
+
+    If subfolder is provided, save inside that subfolder.
+    Otherwise, save directly inside the configured root folder.
     """
-    content = json.dumps(payload, indent=2, default=str).encode("utf-8")
 
-    try:
-        service   = _get_drive_service()
-        folder_id = _get_folder_id()
-        file_id   = _find_file_id(service, filename, folder_id)
-
-        if not file_id:
-            # File doesn't exist — can't create (service account has no quota)
-            # Log clearly so user knows to manually create the file in Drive
-            raise FileNotFoundError(
-                f"'{filename}' not found in Drive folder. "
-                f"Please create it manually in quant-dashboard-data/ "
-                f"with content {{\"status\": \"pending\"}} then re-run."
-            )
-
-        media = MediaIoBaseUpload(
-            io.BytesIO(content),
-            mimetype="application/json",
-            resumable=False,
-        )
-        service.files().update(
-            fileId=file_id,
-            media_body=media,
-        ).execute()
-        logger.info(f"Drive updated: {filename}")
-        return
-
-    except FileNotFoundError as e:
-        # Re-raise with clear message — this needs user action
-        logger.error(str(e))
-        raise
-
-    except Exception as e:
-        logger.warning(
-            f"Drive save failed for {filename}, falling back to local: {e}"
-        )
-
-    # Local fallback (used during local dev without Drive credentials)
-    DATA_DIR.mkdir(exist_ok=True)
-    with open(DATA_DIR / filename, "w") as f:
-        f.write(json.dumps(payload, indent=2, default=str))
-    logger.info(f"Local save: {filename}")
-
-
-def load(filename: str, default=None):
-    """
-    Load JSON from Google Drive.
-
-    Falls back to the local data/ folder if Drive is unavailable
-    or the requested file does not exist in Drive.
-    """
     try:
         service = _get_drive_service()
         folder_id = _get_folder_id()
+
+        # Resolve destination folder
+        if subfolder:
+            folder_id = _find_or_create_subfolder(
+                service,
+                subfolder,
+                folder_id,
+            )
+
+        json_data = json.dumps(payload, indent=2, default=str)
+        media = MediaIoBaseUpload(
+            io.BytesIO(json_data.encode("utf-8")),
+            mimetype="application/json",
+            resumable=True,
+        )
+
+        file_id = _find_file_id(service, filename, folder_id)
+
+        if file_id:
+            # Update existing file
+            service.files().update(
+                fileId=file_id,
+                media_body=media,
+            ).execute()
+
+            logging.info(
+                "Updated Google Drive file: %s%s",
+                f"{subfolder}/" if subfolder else "",
+                filename,
+            )
+
+        else:
+            # Create new file
+            metadata = {
+                "name": filename,
+                "mimeType": "application/json",
+                "parents": [folder_id],
+            }
+
+            service.files().create(
+                body=metadata,
+                media_body=media,
+                fields="id",
+            ).execute()
+
+            logging.info(
+                "Created Google Drive file: %s%s",
+                f"{subfolder}/" if subfolder else "",
+                filename,
+            )
+
+    except Exception:
+        logging.exception("Failed to save %s to Google Drive", filename)
+
+        # Preserve existing local fallback for normal saves.
+        # For subfolder saves, fail explicitly rather than silently
+        # writing the requested Drive files to the local data folder.
+        if subfolder:
+            raise
+
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+        local_path = DATA_DIR / filename
+        with open(local_path, "w", encoding="utf-8") as file:
+            json.dump(payload, file, indent=2, default=str)
+
+        logging.warning("Saved locally instead: %s", local_path)
+
+
+def load(filename: str, default=None, subfolder: str | None = None):
+    """
+    Load JSON from Google Drive.
+
+    If subfolder is provided, search inside that Drive subfolder.
+    Falls back to the local data/ folder if Drive is unavailable
+    or the requested file does not exist.
+    """
+
+    try:
+        service = _get_drive_service()
+        folder_id = _get_folder_id()
+
+        if subfolder:
+            folder_id = _find_subfolder(
+                service,
+                subfolder,
+                folder_id,
+            )
+
+            if not folder_id:
+                logger.warning(
+                    "Drive subfolder '%s' not found.",
+                    subfolder,
+                )
+                return default
+
         file_id = _find_file_id(service, filename, folder_id)
 
         if file_id:
@@ -132,13 +246,15 @@ def load(filename: str, default=None):
             return json.load(buffer)
 
         logger.warning(
-            f"Drive: {filename} not found. Checking local fallback."
+            "Drive: %s not found. Checking local fallback.",
+            filename,
         )
 
     except Exception as e:
         logger.warning(
-            f"Drive load failed for {filename}, "
-            f"trying local fallback: {e}"
+            "Drive load failed for %s, trying local fallback: %s",
+            filename,
+            e,
         )
 
     local_path = DATA_DIR / filename
@@ -149,37 +265,61 @@ def load(filename: str, default=None):
                 return json.load(f)
 
         except (json.JSONDecodeError, OSError) as e:
-            logger.error(
-                f"Local load failed for {filename}: {e}"
-            )
+            logger.error("Local load failed for %s: %s", filename, e)
 
     return default
 
 
-def last_updated(filename: str) -> str | None:
-    """Return last modified time of the file from Drive."""
+def last_updated(
+    filename: str,
+    subfolder: str | None = None,
+) -> str | None:
+    """Return last modified time of a Drive file."""
+
     try:
-        service   = _get_drive_service()
+        service = _get_drive_service()
         folder_id = _get_folder_id()
-        file_id   = _find_file_id(service, filename, folder_id)
+
+        if subfolder:
+            folder_id = _find_or_create_subfolder(
+                service,
+                subfolder,
+                folder_id,
+            )
+
+        file_id = _find_file_id(service, filename, folder_id)
 
         if not file_id:
             return None
 
         meta = service.files().get(
-            fileId=file_id, fields="modifiedTime"
+            fileId=file_id,
+            fields="modifiedTime",
         ).execute()
+
         dt = datetime.fromisoformat(
             meta["modifiedTime"].replace("Z", "+00:00")
         )
+
         from core.utils import IST
-        return dt.astimezone(IST).strftime("%d %b %Y, %I:%M %p IST")
+
+        return dt.astimezone(IST).strftime(
+            "%d %b %Y, %I:%M %p IST"
+        )
 
     except Exception as e:
-        logger.warning(f"Drive last_updated failed for {filename}: {e}")
+        logger.warning(
+            "Drive last_updated failed for %s: %s",
+            filename,
+            e,
+        )
 
     local_path = DATA_DIR / filename
+
     if local_path.exists():
         ts = os.path.getmtime(local_path)
-        return datetime.fromtimestamp(ts).strftime("%d %b %Y, %I:%M %p")
+        return datetime.fromtimestamp(ts).strftime(
+            "%d %b %Y, %I:%M %p"
+        )
+
     return None
