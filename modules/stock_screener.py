@@ -12,6 +12,7 @@ import logging
 import time
 import pandas as pd
 from ta.momentum import RSIIndicator
+from yfinance import data
 from config import SCREENER
 from core.db import save, load
 from core.notifier import send_message
@@ -28,7 +29,11 @@ BATCH_SIZE = 200   # was 500 — smaller batches = less concurrent load per requ
 # SCREENER CONFIGURATION
 # ============================================================
 
+# Google Drive universe folder
+UNIVERSE_DRIVE_FOLDER = "symbols"  # Options: "symbols" or None (root folder)
+
 EXCHANGE = "NSE"  # Options: "NSE", "BSE", "BOTH"
+BSE_YAHOO_TICKER_TYPE = "SYMBOL"  # Options: "SYMBOL" or "SCRIP"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -107,91 +112,171 @@ def _batch_fetch(yahoo_symbols: list[str], period: str = "1y") -> pd.DataFrame:
 
 def get_nse_universe() -> tuple[list[tuple[str, str, str]], set[str]]:
     """
-    Load NSE symbols from nse_symbols.json on Google Drive.
+    Load NSE symbols from Google Drive.
+
+    Supports both:
+      - Direct list format
+      - Legacy dictionary format containing status and symbols
 
     Filters out:
       - is_suspended = True
       - is_etf = True
       - series != "EQ"
-
-    Falls back to NIFTY Total Market API if JSON is missing.
-
-    Returns:
-        universe : list of (symbol, yahoo_ticker, company)
-        isins    : set of NSE ISINs for BSE deduplication
     """
-    data = load("nse_symbols.json")
 
-    if data and data.get("status") == "ok" and data.get("symbols"):
-        all_symbols = data["symbols"]
+    data = load("nse_symbols.json", subfolder=UNIVERSE_DRIVE_FOLDER)
 
+    if isinstance(data, list):
+        all_symbols = data
+        timestamp = "—"
+
+    elif isinstance(data, dict):
+        if data.get("status") != "ok":
+            all_symbols = []
+        else:
+            all_symbols = data.get("symbols", [])
+
+        timestamp = data.get("timestamp", "—")
+
+    else:
+        all_symbols = []
+        timestamp = "—"
+
+    if all_symbols:
         symbols = [
             s for s in all_symbols
-            if s.get("series")           == "EQ"
-            and not s.get("is_etf",       False)
+            if isinstance(s, dict)
+            and s.get("series") == "EQ"
+            and not s.get("is_etf", False)
             and not s.get("is_suspended", False)
         ]
 
         universe = [
-            (s["symbol"], f"{s['symbol']}.NS", s.get("company", ""))
+            (
+                s["symbol"],
+                s.get("yahoo_symbol") or f"{s['symbol']}.NS",
+                s.get("company", ""),
+            )
             for s in symbols
+            if s.get("symbol")
         ]
-        isins = {s["isin"] for s in symbols if s.get("isin")}
+
+        isins = {
+            s["isin"]
+            for s in symbols
+            if s.get("isin")
+        }
 
         logger.info(
             f"NSE universe (Drive JSON): {len(universe)} EQ stocks "
             f"(filtered from {len(all_symbols)} total) "
-            f"[updated: {data.get('timestamp', '—')}]"
+            f"[updated: {timestamp}]"
         )
+
         return universe, isins
 
-    # Fallback — NIFTY Total Market API (no company name or ISINs available)
     logger.warning(
-        "nse_symbols.json not on Drive — falling back to NIFTY Total Market API. "
-        "Run universe_updater.py to populate."
+        "nse_symbols.json missing or empty — "
+        "falling back to NIFTY Total Market API."
     )
+
     try:
-        url      = "https://www.nseindia.com/api/NextApi/apiClient/marketWatchApi?functionName=getIndicesData&symbol=NIFTY%20TOTAL%20MKT"
+        url = (
+            "https://www.nseindia.com/api/NextApi/apiClient/"
+            "marketWatchApi?functionName=getIndicesData&"
+            "symbol=NIFTY%20TOTAL%20MKT"
+        )
+
         api_data = fetch_nse(url)
-        constituents = api_data["data"]["data"]  # new endpoint nests the list one level deeper
+        constituents = api_data["data"]["data"]
+
         universe = [
             (item["symbol"], f"{item['symbol']}.NS", "")
             for item in constituents
             if item.get("priority") != 1 and item.get("symbol")
         ]
-        logger.info(f"NSE universe (API fallback): {len(universe)} symbols")
+
+        logger.info(
+            f"NSE universe (API fallback): {len(universe)} symbols"
+        )
+
         return universe, set()
+
     except Exception as e:
         logger.error(f"NSE API fallback failed: {e}")
         return [], set()
 
+
 def get_bse_universe() -> list[tuple[str, str, str]]:
     """
-    Load BSE symbols from bse_symbols.json on Google Drive.
+    Load BSE symbols from Google Drive.
 
-    Returns list of (scrip_code, yahoo_ticker, company):
-        [("542772", "542772.BO", "360 ONE WAM LIMITED"), ...]
+    Supports:
+      - Direct list format
+      - Legacy dictionary format
+
+    Returns:
+        List of (scrip_code, yahoo_ticker, company)
     """
-    data = load("bse_symbols.json")
 
-    if not data or data.get("status") != "ok" or not data.get("symbols"):
-        logger.warning(
-            "bse_symbols.json not on Drive — skipping BSE universe. "
-            "Run universe_updater.py to populate."
-        )
+    data = load("bse_symbols.json", subfolder=UNIVERSE_DRIVE_FOLDER)
+
+    if isinstance(data, list):
+        all_symbols = data
+
+    elif isinstance(data, dict):
+        if data.get("status") != "ok":
+            logger.warning("BSE universe JSON status is not OK.")
+            return []
+
+        all_symbols = data.get("symbols", [])
+
+    else:
+        logger.warning("BSE universe JSON missing or invalid.")
         return []
 
+    if not all_symbols:
+        logger.warning("BSE universe is empty.")
+        return []
+
+    ticker_type = BSE_YAHOO_TICKER_TYPE.upper()
+
+    if ticker_type not in ("SYMBOL", "SCRIP"):
+        raise ValueError(
+            f"Invalid BSE_YAHOO_TICKER_TYPE: {ticker_type}. "
+            "Use 'SYMBOL' or 'SCRIP'."
+        )
+
     universe = [
-        (item["scrip_code"], f"{item['scrip_code']}.BO", item.get("company", ""))
-        for item in data["symbols"]
-        if item.get("scrip_code")
+        (
+            item["scrip_code"],
+            (
+                f"{item['symbol']}.BO"
+                if ticker_type == "SYMBOL"
+                else f"{item['scrip_code']}.BO"
+            ),
+            item.get("company", ""),
+        )
+        for item in all_symbols
+        if isinstance(item, dict)
+        and item.get("scrip_code")
+        and (
+            item.get("symbol")
+            if ticker_type == "SYMBOL"
+            else item.get("scrip_code")
+        )
     ]
 
     logger.info(
-        f"BSE universe (Drive JSON): {len(universe)} stocks "
-        f"[updated: {data.get('timestamp', '—')}]"
+        "BSE universe (Drive JSON): %d stocks (filtered from %d records) "
+        "| Yahoo ticker type: %s",
+        len(universe),
+        len(all_symbols),
+        ticker_type,
     )
+
     return universe
+
 
 
 
